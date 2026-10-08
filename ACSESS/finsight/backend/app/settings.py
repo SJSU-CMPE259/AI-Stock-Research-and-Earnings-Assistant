@@ -23,13 +23,17 @@ class Settings(BaseSettings):
     """SEC requires User-Agent as 'Full Name email@domain.com'"""
 
     # LLM configuration
-    llm_provider: Literal["anthropic", "openai"] = "anthropic"
-    llm_model: str
-    """Model ID from selected provider (e.g., claude-opus-5, gpt-4-turbo)"""
+    llm_provider: Literal["anthropic", "openai", "remote"] = "remote"
+    llm_model: str = "mistralai/Mistral-7B-Instruct-v0.1"
+    """Model ID from selected provider (e.g., claude-opus-5, gpt-4-turbo, mistral-7b)"""
 
     # API keys (at least one required based on provider)
     anthropic_api_key: str | None = None
     openai_api_key: str | None = None
+
+    # Remote LLM endpoint (for vLLM, ollama, etc.)
+    remote_llm_url: str = "http://localhost:8000/v1"
+    """URL of remote LLM service (e.g., http://localhost:8000/v1 for vLLM)"""
 
     # Embeddings
     embed_model: str = "sentence-transformers/all-MiniLM-L6-v2"
@@ -83,6 +87,11 @@ class Settings(BaseSettings):
             raise ValueError(
                 "LLM_PROVIDER=openai but OPENAI_API_KEY not set. "
                 "Set OPENAI_API_KEY in .env or environment."
+            )
+        elif self.llm_provider == "remote" and not self.remote_llm_url:
+            raise ValueError(
+                "LLM_PROVIDER=remote but REMOTE_LLM_URL not set. "
+                "Set REMOTE_LLM_URL in .env (e.g., http://localhost:8000/v1)"
             )
 
         # Ensure data directory exists

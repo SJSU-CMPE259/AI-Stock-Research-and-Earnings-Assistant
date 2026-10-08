@@ -11,11 +11,10 @@ lxml==4.9.3
 
 # Database
 SQLAlchemy==2.0.23
-sqlite3
 
 # Embeddings & retrieval
 sentence-transformers==2.2.2
-faiss-cpu==1.7.4
+faiss-cpu==1.12.0
 rank-bm25==0.2.2
 
 # LLM clients
