@@ -1,0 +1,22 @@
+# Supported companies for FinSight research
+# Currently supporting NVDA; team will add the remaining 9 companies
+
+companies:
+  - ticker: NVDA
+    name: NVIDIA Corporation
+    enabled: true
+
+# Future companies to be added:
+# - ticker: AAPL
+#   name: Apple Inc.
+#   enabled: false
+# - ticker: MSFT
+#   name: Microsoft Corporation
+#   enabled: false
+# - ticker: TSLA
+#   name: Tesla Inc.
+#   enabled: false
+# - ticker: GOOGL
+#   name: Alphabet Inc.
+#   enabled: false
+# ... (remaining companies)

@@ -1,0 +1,37 @@
+# Core
+FastAPI==0.109.0
+uvicorn==0.27.0
+pydantic==2.6.1
+pydantic-settings==2.1.0
+
+# HTTP & parsing
+requests==2.31.0
+beautifulsoup4==4.12.2
+lxml==4.9.3
+
+# Database
+SQLAlchemy==2.0.23
+sqlite3
+
+# Embeddings & retrieval
+sentence-transformers==2.2.2
+faiss-cpu==1.7.4
+rank-bm25==0.2.2
+
+# LLM clients
+anthropic==0.21.0
+openai==1.6.1
+
+# Frontend
+streamlit==1.29.0
+
+# Testing
+pytest==7.4.3
+pytest-asyncio==0.23.2
+
+# Linting & formatting
+ruff==0.1.10
+
+# Utilities
+python-dotenv==1.0.0
+pyyaml==6.0.1
