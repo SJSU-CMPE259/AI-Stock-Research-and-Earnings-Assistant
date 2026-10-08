@@ -1,5 +1,7 @@
 # AI-Stock-Research-and-Earnings-Assistant
 
+
+
 Structure
 ```
 finsight/
