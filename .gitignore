@@ -1,0 +1,25 @@
+# Secrets
+.env
+
+# Data: raw filings, SEC cache, database, FAISS index
+data/
+*.db
+*.sqlite
+*.faiss
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Notebooks
+.ipynb_checkpoints/
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
