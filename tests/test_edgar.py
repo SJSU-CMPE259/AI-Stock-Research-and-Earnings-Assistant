@@ -70,14 +70,16 @@ print("HTML preview:", html[:200])
 
 assert len(html) > 0
 
-print("\nAll 4 tests passed!")
-
 
 # Test 5: Invalid ticker
 print("\nTEST 5: Invalid ticker")
 
 try:
     get_cik("INVALID_TICKER_123")
-    print("FAILED: Expected ValueError")
 except ValueError as e:
     print("PASSED:", e)
+else:
+    raise AssertionError("Expected ValueError for invalid ticker")
+
+
+print("\nAll 5 tests passed!")
