@@ -10,6 +10,18 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from backend.app.tools.edgar import get_edgar
 from backend.app.tools.sections import parse_filing
 
+COMPANY_INFO = {
+    "NVDA": {"name": "NVIDIA Corp.", "color": "#76b900"},
+    "AAPL": {"name": "Apple Inc.", "color": "#555555"},
+    "MSFT": {"name": "Microsoft Corp.", "color": "#0078d4"},
+    "TSLA": {"name": "Tesla, Inc.", "color": "#e82127"},
+}
+
+
+def logo_url(ticker: str) -> str:
+    """Stock logo by ticker (FinancialModelingPrep, works for any US ticker)."""
+    return f"https://financialmodelingprep.com/image-stock/{ticker}.png"
+
 st.set_page_config(
     page_title="FinSight",
     page_icon="📊",
@@ -109,7 +121,19 @@ st.markdown(
 # Sidebar
 with st.sidebar:
     st.header("⚙️ Configuration")
-    company = st.selectbox("Select Company", ["NVDA", "AAPL", "MSFT", "TSLA"])
+    company = st.selectbox(
+        "Select Company",
+        ["NVDA", "AAPL", "MSFT", "TSLA"],
+        format_func=lambda t: f"{t} — {COMPANY_INFO[t]['name']}",
+    )
+    st.markdown(
+        f'<div style="text-align:center;margin:12px 0;">'
+        f'<img src="{logo_url(company)}" alt="{company}" '
+        f'style="width:76px;height:76px;border-radius:16px;background:#fff;'
+        f'padding:9px;object-fit:contain;box-shadow:0 2px 10px rgba(0,0,0,0.2);"/>'
+        f"</div>",
+        unsafe_allow_html=True,
+    )
     form_type = st.selectbox("Filing Type", ["10-K", "10-Q"])
     st.markdown("---")
     st.caption("💡 FinSight uses SEC EDGAR filings as source of truth.")
@@ -119,7 +143,27 @@ with st.sidebar:
 col1, col2 = st.columns([2, 1])
 
 with col1:
-    st.header(f"{company} Financial Data")
+    st.markdown(
+        f"""
+        <style>
+        .company-header {{ display: flex; align-items: center; gap: 14px; margin-bottom: 12px; }}
+        .company-logo {{
+            width: 56px; height: 56px; border-radius: 12px; background: #fff;
+            padding: 7px; object-fit: contain; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+        }}
+        .company-name {{ font-size: 1.5rem; font-weight: 800; line-height: 1.1; color: inherit; }}
+        .company-meta {{ font-size: 0.85rem; color: #8a9ba3; margin-top: 2px; }}
+        </style>
+        <div class="company-header">
+            <img class="company-logo" src="{logo_url(company)}" alt="{company}"/>
+            <div>
+                <div class="company-name">{COMPANY_INFO[company]['name']}</div>
+                <div class="company-meta">{company} · {form_type} · SEC EDGAR</div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     if st.button("📥 Fetch Latest Filing", use_container_width=True):
         with st.spinner(f"Fetching {company}'s latest {form_type}..."):
@@ -174,10 +218,43 @@ with col1:
                 st.error(f"❌ Error: {str(e)}")
 
 with col2:
-    st.header("🤖 Ask Mistral")
+    st.markdown(
+        """
+        <style>
+        .qa-head { font-size: 1.55rem; font-weight: 800; color: inherit; margin: 0; }
+        .qa-sub { color: #8a9ba3; font-size: 0.88rem; margin: 2px 0 14px 0; }
+        .qa-answer-head {
+            font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em;
+            text-transform: uppercase; color: #1f7a8c;
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 6px;
+        }
+        .qa-answer-head span {
+            color: #8a9ba3; font-weight: 600; letter-spacing: 0; text-transform: none;
+        }
+        .src-chip-row { margin-top: 14px; display: flex; flex-wrap: wrap; gap: 6px; }
+        .src-chip {
+            font-size: 0.72rem; font-weight: 600; color: #0b2a3d;
+            background: #cfe8f2; border-radius: 14px; padding: 3px 10px;
+            display: inline-block;
+        }
+        .qa-empty {
+            border: 1px dashed rgba(127, 150, 162, 0.4); border-radius: 12px;
+            padding: 22px; text-align: center; color: #8a9ba3; font-size: 0.9rem;
+        }
+        </style>
+        <div class="qa-head">🤖 Ask Mistral</div>
+        <div class="qa-sub">Grounded in the filing you fetch — answers cite their sources.</div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     if "sections" not in st.session_state:
-        st.info("Fetch a filing first, then ask questions about it here.")
+        st.markdown(
+            '<div class="qa-empty">📄 Fetch a filing first, then ask your '
+            "question here.</div>",
+            unsafe_allow_html=True,
+        )
     else:
         sections = st.session_state.sections
         filing = st.session_state.filing
@@ -186,13 +263,14 @@ with col2:
             "Your question",
             placeholder="e.g. What are the main risk factors? How did revenue change?",
             height=100,
+            label_visibility="collapsed",
         )
 
-        if st.button("Ask", use_container_width=True, type="primary"):
+        if st.button("🔍 Ask Mistral", use_container_width=True, type="primary"):
             if not question.strip():
                 st.warning("Type a question first.")
             else:
-                with st.spinner("Mistral is reading the filing..."):
+                with st.spinner("Mistral is reading the filing on the GPU..."):
                     try:
                         from backend.app.llm import get_llm
 
@@ -219,12 +297,25 @@ with col2:
                             temperature=0.2,
                         )
 
-                        st.markdown("#### Answer")
-                        st.markdown(answer)
+                        with st.container(border=True):
+                            st.markdown(
+                                '<div class="qa-answer-head">📝 Research Answer'
+                                "<span>Mistral-7B · PSC GPU</span></div>",
+                                unsafe_allow_html=True,
+                            )
+                            st.markdown(answer)
+                            chips = "".join(
+                                f'<span class="src-chip">[S{i}] {s.name}</span>'
+                                for i, s in enumerate(sections, 1)
+                            )
+                            st.markdown(
+                                f'<div class="src-chip-row">{chips}</div>',
+                                unsafe_allow_html=True,
+                            )
 
-                        with st.expander("Sources (from this filing)"):
-                            for i, s in enumerate(sections, 1):
-                                st.caption(f"[S{i}] {s.name} — {len(s.text):,} chars")
+                        st.caption(
+                            f"Source: {company} {filing.form}, filed {filing.filing_date} · SEC EDGAR"
+                        )
                     except Exception as e:
                         st.error(f"❌ LLM error: {e}")
 
