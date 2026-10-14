@@ -1,0 +1,14 @@
+[
+  {
+    "text": "NVIDIA and Microsoft discussed AMD.",
+    "entities": [{"text": "NVIDIA", "label": "ORG"}, {"text": "Microsoft", "label": "ORG"}, {"text": "AMD", "label": "TICKER"}]
+  },
+  {
+    "text": "Apple mentioned NVDA. Tesla discussed Intel.",
+    "entities": [{"text": "Apple", "label": "ORG"}, {"text": "NVDA", "label": "TICKER"}, {"text": "Tesla", "label": "ORG"}, {"text": "Intel", "label": "ORG"}]
+  },
+  {
+    "text": "Acme Robotics supplies chips.",
+    "entities": [{"text": "Acme Robotics", "label": "ORG"}]
+  }
+]
