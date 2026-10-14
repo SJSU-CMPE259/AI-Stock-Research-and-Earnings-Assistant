@@ -73,11 +73,11 @@ def render_agent_demo():
         )
         st.markdown("**Agent steps**")
         for step in tr.steps:
-            st.markdown(f"- {step}")
+            st.markdown("- " + step.replace("$", "\\$"))  # escape $ so it isn't read as LaTeX
         if tr.reused:
             st.success(f"♻️ Reused from memory (skipped re-fetch): {', '.join(tr.reused)}")
         st.markdown("**Answer**")
-        st.info(tr.answer)
+        st.info(tr.answer.replace("$", "\\$"))
         with st.expander("🧠 Shared memory after this question"):
             st.code(st.session_state.agent_orch.memory.describe() or "(empty)")
 
