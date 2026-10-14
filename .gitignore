@@ -11,6 +11,8 @@ data/
 __pycache__/
 *.pyc
 .venv/
+.venv-nlp/
+work/
 venv/
 *.egg-info/
 .pytest_cache/

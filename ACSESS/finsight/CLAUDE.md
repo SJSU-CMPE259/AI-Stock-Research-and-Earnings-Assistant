@@ -301,6 +301,16 @@ curl -X POST http://localhost:8000/ask \
 
 ## Future Phases (Team Branches)
 
+### Nathan's Sprint 1 NLP baseline (2026-10-13)
+
+`agents/analysis.py` now coordinates source-preserving sentence/entity extraction
+using `app/nlp/`. It emits evidence notes with stable IDs and validated spans.
+The standalone notebook is `../../notebooks/p2_analysis_nlp.ipynb`; setup,
+limitations and handoff are documented in `../../docs/nlp_baseline.md`.
+The annotation queue preserves human labels, and excludes synthetic fixtures.
+Sentiment classification, financial metrics, and API/shared-memory integration
+remain future work. `agents/classify.py` and `agents/report.py` remain stubs.
+
 Each team will open a separate branch for their agent phase:
 
 1. **Data Agent** (filings, news, earnings calls) → `feature/data-agent`
