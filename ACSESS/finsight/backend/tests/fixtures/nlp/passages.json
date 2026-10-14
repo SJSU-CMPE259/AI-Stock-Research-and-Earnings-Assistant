@@ -1,0 +1,32 @@
+[
+  {
+    "ticker": "NVDA",
+    "source_type": "filing",
+    "source_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581025000023/nvda-20250126.htm",
+    "accession": "0001045810-25-000023",
+    "form": "10-K",
+    "period_end": "2025-01-26",
+    "section": "Item 7 — Overview",
+    "text": "Revenue growth in fiscal year 2025 was driven by data center compute and networking platforms for accelerated computing and AI solutions."
+  },
+  {
+    "ticker": "NVDA",
+    "source_type": "filing",
+    "source_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000021/nvda-20260125.htm",
+    "accession": "0001045810-26-000021",
+    "form": "10-K",
+    "period_end": "2026-01-25",
+    "section": "Item 7 — Recent Developments, Future Objectives and Challenges",
+    "text": "We generated approximately $60 million in H20 revenue under those licenses."
+  },
+  {
+    "ticker": "NVDA",
+    "source_type": "filing",
+    "source_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581025000209/nvda-20250727.htm",
+    "accession": "0001045810-25-000209",
+    "form": "10-Q",
+    "period_end": "2025-07-27",
+    "section": "Part I, Item 2 — Macroeconomic Factors",
+    "text": "Our product and solution pricing generally does not fluctuate with short-term changes in our costs."
+  }
+]

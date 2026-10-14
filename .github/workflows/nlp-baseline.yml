@@ -1,0 +1,33 @@
+name: NLP baseline
+
+on:
+  push:
+    paths:
+      - 'ACSESS/finsight/backend/app/nlp/**'
+      - 'ACSESS/finsight/backend/app/agents/analysis.py'
+      - 'ACSESS/finsight/backend/tests/test_nlp.py'
+      - 'ACSESS/finsight/backend/scripts/analyze.py'
+      - 'ACSESS/finsight/backend/tests/fixtures/nlp/**'
+      - 'ACSESS/finsight/requirements-nlp.txt'
+      - '.github/workflows/nlp-baseline.yml'
+  pull_request:
+    paths:
+      - 'ACSESS/finsight/backend/app/nlp/**'
+      - 'ACSESS/finsight/backend/app/agents/analysis.py'
+      - 'ACSESS/finsight/backend/tests/test_nlp.py'
+      - 'ACSESS/finsight/backend/scripts/analyze.py'
+      - 'ACSESS/finsight/backend/tests/fixtures/nlp/**'
+      - 'ACSESS/finsight/requirements-nlp.txt'
+      - '.github/workflows/nlp-baseline.yml'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r ACSESS/finsight/requirements-nlp.txt
+      - run: python -m pytest backend/tests/test_nlp.py -q
+        working-directory: ACSESS/finsight
