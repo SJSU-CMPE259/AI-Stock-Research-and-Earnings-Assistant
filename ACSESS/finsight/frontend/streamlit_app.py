@@ -22,6 +22,66 @@ def logo_url(ticker: str) -> str:
     """Stock logo by ticker (FinancialModelingPrep, works for any US ticker)."""
     return f"https://financialmodelingprep.com/image-stock/{ticker}.png"
 
+
+def render_agent_demo():
+    """The multi-agent core demo (agent_core/) as an interactive page."""
+    from agent_core.llm import FakeLLM, MistralLLM
+    from agent_core.memory import Conversation, SharedMemory
+    from agent_core.orchestrator import Orchestrator
+
+    st.markdown("### 🤖 Agent Demo")
+    st.caption(
+        "The multi-agent core on bundled **AMD sample data** — watch the orchestrator "
+        "route each question and the agents work over one shared memory. Answers built "
+        "from sample data end with *(sample data)*."
+    )
+
+    use_fake = st.toggle(
+        "Offline (FakeLLM)", value=False,
+        help="Off = real Mistral on your PSC GPU (needs the tunnel on :8000)",
+    )
+    samples = [
+        "What was AMD's revenue last quarter?",
+        "How did it change from the year before?",
+        "What is the tone of AMD's recent filings?",
+        "What is AMD's stock price right now?",
+        "Should I buy AMD?",
+    ]
+    picked = st.selectbox("Sample question (or type your own below)", ["(type your own)"] + samples)
+    question = st.text_input("Question", value="" if picked == "(type your own)" else picked, key="agent_q")
+
+    def _fresh():
+        llm = FakeLLM() if use_fake else MistralLLM()
+        return Orchestrator(llm, memory=SharedMemory(), conversation=Conversation())
+
+    # One orchestrator per session preserves conversation memory (ticker recall, stored reuse).
+    if "agent_orch" not in st.session_state or st.session_state.get("agent_fake") != use_fake:
+        st.session_state.agent_orch = _fresh()
+        st.session_state.agent_fake = use_fake
+
+    c1, c2 = st.columns(2)
+    run = c1.button("▶️ Run agents", type="primary", use_container_width=True)
+    if c2.button("🔄 New conversation", use_container_width=True):
+        st.session_state.agent_orch = _fresh()
+        st.rerun()
+
+    if run and question.strip():
+        with st.spinner("Agents working… (real Mistral sentiment path makes ~8 calls)"):
+            tr = st.session_state.agent_orch.ask(question)
+        st.markdown(
+            f"**Route:** `{tr.route}`  •  **ticker:** `{tr.ticker}`  •  **{tr.elapsed_s * 1000:.0f} ms**"
+        )
+        st.markdown("**Agent steps**")
+        for step in tr.steps:
+            st.markdown(f"- {step}")
+        if tr.reused:
+            st.success(f"♻️ Reused from memory (skipped re-fetch): {', '.join(tr.reused)}")
+        st.markdown("**Answer**")
+        st.info(tr.answer)
+        with st.expander("🧠 Shared memory after this question"):
+            st.code(st.session_state.agent_orch.memory.describe() or "(empty)")
+
+
 st.set_page_config(
     page_title="FinSight",
     page_icon="📊",
@@ -136,8 +196,14 @@ with st.sidebar:
     )
     form_type = st.selectbox("Filing Type", ["10-K", "10-Q"])
     st.markdown("---")
+    mode = st.radio("Mode", ["📄 Filing Q&A", "🤖 Agent Demo"], index=0)
+    st.markdown("---")
     st.caption("💡 FinSight uses SEC EDGAR filings as source of truth.")
     st.caption("🔒 For research and educational purposes only.")
+
+if mode == "🤖 Agent Demo":
+    render_agent_demo()
+    st.stop()
 
 # Main content
 col1, col2 = st.columns([2, 1])
