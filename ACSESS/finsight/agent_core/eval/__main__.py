@@ -21,7 +21,7 @@ from agent_core.eval.clients import (  # noqa: E402
 )
 from agent_core.eval.data import load_csv, select_split  # noqa: E402
 
-SETUPS = ["A", "B", "C", "D", "E"]
+SETUPS = ["A", "B", "C", "D", "E", "F"]
 INTENTS = ["numbers", "real_time", "sentiment", "text", "refuse", "out_of_scope"]
 SENTIMENTS = ["positive", "neutral", "negative"]
 
@@ -48,8 +48,8 @@ def make_deciders(dry_run: bool):
     return rules, MistralDecider(), LayaDecider()
 
 
-def run_choice(setup, state, instr, options, rules, mistral, laya, threshold):
-    """Apply a setup to a choice decision. Returns the chosen Decision."""
+def run_choice(setup, state, instr, options, rules, mistral, laya, threshold, best="laya"):
+    """Apply a setup to a choice decision. `best` = which model setup F uses here."""
     if setup == "A":
         return rules.decide_choice(state, instr, options)
     if setup == "B":
@@ -59,6 +59,8 @@ def run_choice(setup, state, instr, options, rules, mistral, laya, threshold):
     if setup == "D":
         d = laya.decide_choice(state, instr, options)
         return d if d.confidence >= threshold else mistral.decide_choice(state, instr, options)
+    if setup == "F":  # hybrid: best model for this decision point
+        return (laya if best == "laya" else mistral).decide_choice(state, instr, options)
     # E: agree or needs_review
     a = laya.decide_choice(state, instr, options)
     b = mistral.decide_choice(state, instr, options)
@@ -68,7 +70,7 @@ def run_choice(setup, state, instr, options, rules, mistral, laya, threshold):
     return a
 
 
-def run_yesno(setup, state, instr, kw, rules, mistral, laya, threshold):
+def run_yesno(setup, state, instr, kw, rules, mistral, laya, threshold, best="laya"):
     if setup == "A":
         return rules.decide_yesno(state, instr, kw)
     if setup == "B":
@@ -78,6 +80,8 @@ def run_yesno(setup, state, instr, kw, rules, mistral, laya, threshold):
     if setup == "D":
         d = laya.decide_yesno(state, instr, kw)
         return d if d.confidence >= threshold else mistral.decide_yesno(state, instr, kw)
+    if setup == "F":
+        return (laya if best == "laya" else mistral).decide_yesno(state, instr, kw)
     a = laya.decide_yesno(state, instr, kw)
     b = mistral.decide_yesno(state, instr, kw)
     if a.answer == b.answer:
@@ -96,15 +100,15 @@ def evaluate(setups, split, dry_run, threshold, seed=0):
         for row in routing:
             q = row["question"]
             di = run_choice(setup, q, "Classify the user's request.", ROUTING_OPTIONS,
-                            rules, mistral, laya, threshold)
+                            rules, mistral, laya, threshold, best="laya")
             records.append(_rec(setup, "routing_intent", q, row["gold_intent"], di))
-            da = run_yesno(setup, q, ADVICE_Q, ADVICE_KW, rules, mistral, laya, threshold)
+            da = run_yesno(setup, q, ADVICE_Q, ADVICE_KW, rules, mistral, laya, threshold, best="laya")
             gold_adv = "yes" if row["gold_is_advice"].strip().lower() == "yes" else "no"
             records.append(_rec(setup, "advice", q, gold_adv, da))
         for row in sentiment:
             s = row["statement"]
             ds = run_choice(setup, s, "Classify the sentiment of the statement.",
-                            SENTIMENT_OPTIONS, rules, mistral, laya, threshold)
+                            SENTIMENT_OPTIONS, rules, mistral, laya, threshold, best="mistral")
             records.append(_rec(setup, "sentiment", s, row["gold_label"], ds))
     return records
 
@@ -166,7 +170,8 @@ def write_outputs(records, summary, setups, split, threshold, dry_run):
     ax.set_title(f"Accuracy vs latency per setup ({'DRY-RUN' if dry_run else split})")
     fig.tight_layout(); fig.savefig(outdir / "accuracy_vs_latency.png", dpi=120); plt.close(fig)
 
-    names = {"A": "rules", "B": "mistral", "C": "laya", "D": "cascade", "E": "agree"}
+    names = {"A": "rules", "B": "mistral", "C": "laya", "D": "cascade", "E": "agree",
+             "F": "hybrid (laya route + mistral sentiment)"}
     lines = [f"# FinSight eval report ({'DRY-RUN — FakeLaya/FakeLLM' if dry_run else split} split)\n",
              f"_generated {date}; cascade threshold={threshold}_\n",
              "\n## 1. Summary (setups x key metrics)\n",
@@ -187,6 +192,8 @@ def write_outputs(records, summary, setups, split, threshold, dry_run):
         lines.append(f"- C vs B: {M.mcnemar([bool(x) for x in corr('C')], [bool(x) for x in corr('B')])}")
     if "B" in setups and "D" in setups:
         lines.append(f"- D vs B: {M.mcnemar([bool(x) for x in corr('D')], [bool(x) for x in corr('B')])}")
+    if "C" in setups and "F" in setups:
+        lines.append(f"- F vs C: {M.mcnemar([bool(x) for x in corr('F')], [bool(x) for x in corr('C')])}")
     lines += [
         "\n## 3. Thresholds\n",
         f"- cascade (setup D) confidence threshold = {threshold} (tune on dev; report on test).",
