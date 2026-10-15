@@ -44,6 +44,8 @@ class Trace:
     reused: list[str] = field(default_factory=list)
     answer: str = ""
     elapsed_s: float = 0.0
+    route_source: str = "keyword"
+    route_confidence: float | None = None
 
 
 def resolve_ticker(question: str, conversation: Conversation) -> str | None:
@@ -72,21 +74,36 @@ def route(question: str) -> str:
 class Orchestrator:
     """Routes one question to a path and runs its agents in order over shared memory."""
 
-    def __init__(self, llm, memory: SharedMemory | None = None, conversation: Conversation | None = None):
+    def __init__(self, llm, memory: SharedMemory | None = None,
+                 conversation: Conversation | None = None, router=None):
         self.llm = llm
         self.memory = memory or SharedMemory()
         self.conversation = conversation or Conversation()
+        self.router = router  # optional model router (e.g. LayaRouter); else keyword rules
+
+    def _route(self, question: str) -> tuple[str, str, float | None]:
+        """Return (route, source, confidence). Uses the model router if set, else keywords."""
+        if self.router is not None:
+            try:
+                r, conf = self.router.route(question)
+                return r, self.router.source, conf
+            except Exception:
+                pass  # endpoint down / error -> keyword fallback
+        return route(question), "keyword", None
 
     def ask(self, question: str) -> Trace:
         start = time.time()
         run_id = f"run-{uuid.uuid4().hex[:8]}"
         ticker = resolve_ticker(question, self.conversation)
-        r = route(question)
-        trace = Trace(run_id=run_id, question=question, ticker=ticker, route=r)
+        r, source, conf = self._route(question)
+        trace = Trace(run_id=run_id, question=question, ticker=ticker, route=r,
+                      route_source=source, route_confidence=conf)
+        conf_txt = f", conf {conf:.2f}" if conf is not None else ""
+        trace.steps.append(f"router [{source}]: {r}{conf_txt}")
 
         if r == "refuse":
             trace.answer = REFUSAL
-            trace.steps.append("router: investment-advice request -> refused (no agents, no LLM)")
+            trace.steps.append("-> refused (no agents, no LLM)")
             return self._finish(trace, start, question)
 
         if ticker:

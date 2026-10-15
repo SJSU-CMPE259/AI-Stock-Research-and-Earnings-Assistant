@@ -40,6 +40,11 @@ def render_agent_demo():
         "Offline (FakeLLM)", value=False,
         help="Off = real Mistral on your PSC GPU (needs the tunnel on :8000)",
     )
+    use_laya = st.toggle(
+        "🧭 Route with Laya (live)", value=False,
+        help="Route the question with Laya instead of keyword rules (needs the Laya tunnel on :8001). "
+             "Laya was the best router in the eval; Mistral still writes the answer.",
+    )
     samples = [
         "What was AMD's revenue last quarter?",
         "How did it change from the year before?",
@@ -52,12 +57,19 @@ def render_agent_demo():
 
     def _fresh():
         llm = FakeLLM() if use_fake else MistralLLM()
-        return Orchestrator(llm, memory=SharedMemory(), conversation=Conversation())
+        router = None
+        if use_laya:
+            from agent_core.laya_router import LayaRouter
+            router = LayaRouter()
+        return Orchestrator(llm, memory=SharedMemory(), conversation=Conversation(), router=router)
 
     # One orchestrator per session preserves conversation memory (ticker recall, stored reuse).
-    if "agent_orch" not in st.session_state or st.session_state.get("agent_fake") != use_fake:
+    if ("agent_orch" not in st.session_state
+            or st.session_state.get("agent_fake") != use_fake
+            or st.session_state.get("agent_laya") != use_laya):
         st.session_state.agent_orch = _fresh()
         st.session_state.agent_fake = use_fake
+        st.session_state.agent_laya = use_laya
 
     c1, c2 = st.columns(2)
     run = c1.button("▶️ Run agents", type="primary", use_container_width=True)
