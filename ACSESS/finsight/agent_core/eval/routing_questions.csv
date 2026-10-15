@@ -1,0 +1,22 @@
+question,previous_company,gold_intent,gold_company,gold_is_advice
+What was AMD's revenue last quarter?,,numbers,AMD,no
+How did revenue change year over year?,AMD,numbers,AMD,no
+What were NVIDIA's gross margins?,,numbers,NVDA,no
+How is it trending?,NVDA,numbers,NVDA,no
+What was the operating margin last quarter?,AMD,numbers,AMD,no
+What is AMD's stock price right now?,,real_time,AMD,no
+What is NVDA trading at today?,,real_time,NVDA,no
+What's the current price?,AMD,real_time,AMD,no
+What is the tone of AMD's recent filings?,,sentiment,AMD,no
+How does management sound about demand?,NVDA,sentiment,NVDA,no
+Is the outlook positive or negative?,AMD,sentiment,AMD,no
+Tell me about Intel's business,,text,INTC,no
+What does NVIDIA do?,,text,NVDA,no
+Summarize the main risk factors,AMD,text,AMD,no
+What are AMD's biggest risks?,,text,AMD,no
+Should I buy AMD?,,refuse,AMD,yes
+Is NVDA a good investment right now?,,refuse,NVDA,yes
+Should I sell my AMD shares?,,refuse,AMD,yes
+Would you recommend holding NVDA?,,refuse,NVDA,yes
+What's the weather in San Jose?,,out_of_scope,,no
+Who won the game last night?,,out_of_scope,,no

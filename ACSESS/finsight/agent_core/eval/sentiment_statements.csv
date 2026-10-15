@@ -1,0 +1,17 @@
+company,statement,section,gold_label,gold_reason,annotator,double_annotate
+AMD,"Data center revenue grew strongly, driven by demand for AI accelerators and server CPUs.",MD&A,positive,TODO,A1,1
+AMD,"Gaming segment revenue declined as console demand softened compared with the prior year.",MD&A,negative,TODO,A1,0
+AMD,"Gross margin improved due to a richer product mix weighted toward data center.",MD&A,positive,TODO,A1,0
+AMD,"Supply constraints for advanced packaging could limit our ability to meet AI demand.",Risk Factors,negative,TODO,A1,1
+NVDA,"Revenue was a record, led by growth in the Data Center platform.",MD&A,positive,TODO,A1,0
+NVDA,"We expect next quarter revenue to be roughly flat sequentially.",Outlook,neutral,TODO,A1,0
+NVDA,"Export controls may adversely affect our results in certain regions.",Risk Factors,negative,TODO,A1,1
+NVDA,"Demand for our products may not meet our expectations.",Risk Factors,negative,TODO,A1,0
+AMD,"The client segment returned to year-over-year growth during the period.",MD&A,positive,TODO,A1,0
+AMD,"Operating expenses increased as we invested in research and development.",MD&A,neutral,TODO,A1,0
+NVDA,"Competition in accelerated computing is intense and continues to increase.",Risk Factors,negative,TODO,A1,0
+NVDA,"Gross margin benefited from a higher mix of data center sales.",MD&A,positive,TODO,A1,0
+AMD,"We rely on third-party foundries, which exposes us to supply risk.",Risk Factors,negative,TODO,A1,1
+AMD,"Management remains optimistic about long-term opportunities in artificial intelligence.",Outlook,positive,TODO,A1,0
+NVDA,"Inventory provisions increased during the quarter.",MD&A,negative,TODO,A1,0
+NVDA,"Results for the quarter were in line with prior guidance.",MD&A,neutral,TODO,A1,0
