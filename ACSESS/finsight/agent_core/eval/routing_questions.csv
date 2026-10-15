@@ -4,19 +4,58 @@ How did revenue change year over year?,AMD,numbers,AMD,no
 What were NVIDIA's gross margins?,,numbers,NVDA,no
 How is it trending?,NVDA,numbers,NVDA,no
 What was the operating margin last quarter?,AMD,numbers,AMD,no
+How much revenue did Intel report?,,numbers,INTC,no
+What was AMD's net income?,,numbers,AMD,no
+How much cash does NVIDIA have on hand?,,numbers,NVDA,no
+What was the year-over-year growth?,AMD,numbers,AMD,no
+What's the earnings per share?,NVDA,numbers,NVDA,no
+How large was the data center segment revenue?,NVDA,numbers,NVDA,no
+What were total operating expenses?,AMD,numbers,AMD,no
+By how much did gross margin expand?,NVDA,numbers,NVDA,no
+What was free cash flow last year?,AMD,numbers,AMD,no
+How did quarterly revenue compare to guidance?,NVDA,numbers,NVDA,no
 What is AMD's stock price right now?,,real_time,AMD,no
 What is NVDA trading at today?,,real_time,NVDA,no
 What's the current price?,AMD,real_time,AMD,no
+How much is NVIDIA stock right now?,,real_time,NVDA,no
+What's Intel trading at this morning?,,real_time,INTC,no
+Give me AMD's latest quote,,real_time,AMD,no
+What's the price as of now?,NVDA,real_time,NVDA,no
+Where is AMD trading currently?,,real_time,AMD,no
+What is the live price of NVDA?,,real_time,NVDA,no
+How much does one AMD share cost today?,,real_time,AMD,no
 What is the tone of AMD's recent filings?,,sentiment,AMD,no
 How does management sound about demand?,NVDA,sentiment,NVDA,no
 Is the outlook positive or negative?,AMD,sentiment,AMD,no
+How bullish is management on AI?,NVDA,sentiment,NVDA,no
+What's the sentiment in the latest 10-K?,AMD,sentiment,AMD,no
+Does the filing sound optimistic or cautious?,NVDA,sentiment,NVDA,no
+How confident does management seem about guidance?,AMD,sentiment,AMD,no
+What is the overall mood of the risk section?,NVDA,sentiment,NVDA,no
+Are they upbeat about the next quarter?,AMD,sentiment,AMD,no
+How negative is the commentary on gaming?,AMD,sentiment,AMD,no
 Tell me about Intel's business,,text,INTC,no
 What does NVIDIA do?,,text,NVDA,no
 Summarize the main risk factors,AMD,text,AMD,no
 What are AMD's biggest risks?,,text,AMD,no
+Explain NVIDIA's main products,,text,NVDA,no
+What segments does AMD operate in?,,text,AMD,no
+Describe the competitive landscape,NVDA,text,NVDA,no
+What does the filing say about supply chain?,AMD,text,AMD,no
+Who are NVIDIA's main competitors?,,text,NVDA,no
+What is AMD's strategy for data center?,,text,AMD,no
+Summarize management's discussion,NVDA,text,NVDA,no
+What are the key risks in the 10-K?,AMD,text,AMD,no
 Should I buy AMD?,,refuse,AMD,yes
 Is NVDA a good investment right now?,,refuse,NVDA,yes
 Should I sell my AMD shares?,,refuse,AMD,yes
 Would you recommend holding NVDA?,,refuse,NVDA,yes
+Is AMD worth buying at this price?,,refuse,AMD,yes
+Should I invest in NVIDIA?,,refuse,NVDA,yes
+Is now a good time to buy Intel?,,refuse,INTC,yes
+Should I add AMD to my portfolio?,,refuse,AMD,yes
 What's the weather in San Jose?,,out_of_scope,,no
 Who won the game last night?,,out_of_scope,,no
+What time is it in New York?,,out_of_scope,,no
+Can you book me a flight?,,out_of_scope,,no
+What's a good recipe for dinner?,,out_of_scope,,no
