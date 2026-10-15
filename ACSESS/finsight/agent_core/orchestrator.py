@@ -14,6 +14,7 @@ from agent_core.agents.classify_agent.agent import ClassifyAgent
 from agent_core.agents.data_agent.agent import DataAgent
 from agent_core.agents.market_agent.agent import MarketAgent
 from agent_core.agents.report_agent.agent import ReportAgent
+from agent_core.agents.viz_agent.agent import VizAgent
 from agent_core.memory import Conversation, SharedMemory
 
 REFUSAL = (
@@ -28,7 +29,7 @@ QUOTE_TTL_S = 60  # a real_time quote older than this must be re-fetched
 
 ROUTES = {
     "real_time": [MarketAgent, ReportAgent],
-    "numbers": [DataAgent, AnalysisAgent, ReportAgent],
+    "numbers": [DataAgent, AnalysisAgent, VizAgent, ReportAgent],
     "sentiment": [DataAgent, ClassifyAgent, ReportAgent],
     "text": [DataAgent, ReportAgent],
 }

@@ -90,6 +90,30 @@ def render_agent_demo():
             st.success(f"♻️ Reused from memory (skipped re-fetch): {', '.join(tr.reused)}")
         st.markdown("**Answer**")
         st.info(tr.answer.replace("$", "\\$"))
+
+        chart = st.session_state.agent_orch.memory.get("amd_chart")
+        if tr.route == "numbers" and chart and chart.get("points"):
+            import altair as alt
+            import pandas as pd
+
+            df = pd.DataFrame(chart["points"])
+            df["latest"] = [i == len(df) - 1 for i in range(len(df))]
+            bars = (
+                alt.Chart(df)
+                .mark_bar()
+                .encode(
+                    x=alt.X("period:N", sort=None, title=chart["x_label"]),
+                    y=alt.Y("revenue_b:Q", title=chart["y_label"]),
+                    color=alt.condition(alt.datum.latest, alt.value("#3ec98a"), alt.value("#1f7a8c")),
+                    tooltip=["period", "revenue_b"],
+                )
+                .properties(title=chart["title"], height=260)
+            )
+            st.markdown("**📊 Revenue chart** (from `viz_agent`)")
+            st.altair_chart(bars, use_container_width=True)
+            if chart.get("note"):
+                st.caption(chart["note"].replace("$", "\\$"))
+
         with st.expander("🧠 Shared memory after this question"):
             st.code(st.session_state.agent_orch.memory.describe() or "(empty)")
 
