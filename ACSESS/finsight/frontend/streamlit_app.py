@@ -114,6 +114,36 @@ def render_agent_demo():
             if chart.get("note"):
                 st.caption(chart["note"].replace("$", "\\$"))
 
+        schart = st.session_state.agent_orch.memory.get("amd_sentiment_chart")
+        if tr.route == "sentiment" and schart and schart.get("points"):
+            import altair as alt
+            import pandas as pd
+
+            sdf = pd.DataFrame(schart["points"])
+            sbars = (
+                alt.Chart(sdf)
+                .mark_bar()
+                .encode(
+                    x=alt.X("label:N", sort=["positive", "neutral", "negative", "uncertain"],
+                            title=schart["x_label"]),
+                    y=alt.Y("count:Q", title=schart["y_label"]),
+                    color=alt.Color(
+                        "label:N",
+                        scale=alt.Scale(
+                            domain=["positive", "neutral", "negative", "uncertain"],
+                            range=["#3ec98a", "#8a9ba3", "#e82127", "#f0ad4e"],
+                        ),
+                        legend=None,
+                    ),
+                    tooltip=["label", "count"],
+                )
+                .properties(title=schart["title"], height=260)
+            )
+            st.markdown("**📊 Sentiment breakdown** (from `viz_agent`)")
+            st.altair_chart(sbars, use_container_width=True)
+            if schart.get("note"):
+                st.caption(schart["note"])
+
         with st.expander("🧠 Shared memory after this question"):
             st.code(st.session_state.agent_orch.memory.describe() or "(empty)")
 

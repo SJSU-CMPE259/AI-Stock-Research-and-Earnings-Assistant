@@ -30,7 +30,7 @@ QUOTE_TTL_S = 60  # a real_time quote older than this must be re-fetched
 ROUTES = {
     "real_time": [MarketAgent, ReportAgent],
     "numbers": [DataAgent, AnalysisAgent, VizAgent, ReportAgent],
-    "sentiment": [DataAgent, ClassifyAgent, ReportAgent],
+    "sentiment": [DataAgent, ClassifyAgent, VizAgent, ReportAgent],
     "text": [DataAgent, ReportAgent],
 }
 
