@@ -20,8 +20,8 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from datetime import date
 
-from src.tools.edgar import get_cik
-from src.tools.sec_client import get_json
+from src.finsight.tools.edgar import get_cik
+from src.finsight.tools.sec_client import get_json
 
 FACTS_URL = "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json"
 
