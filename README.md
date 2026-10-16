@@ -18,7 +18,7 @@ finsight/
 ├── .github/workflows/ci.yml   # ruff + pytest on every PR
 ├── docs/                      # contracts.md, architecture, sprint notes
 ├── config/companies.yaml      # 10 tickers + CIKs
-├── src
+├── src/finsight/
 │   ├── memory/        (P4)    CAVM store on SQLite, schemas
 │   ├── orchestrator/  (P4)    planner, step runner
 │   ├── tools/         (P1)    edgar.py, xbrl.py, news.py
