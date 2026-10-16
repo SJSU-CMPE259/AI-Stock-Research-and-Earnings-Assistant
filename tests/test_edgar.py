@@ -5,7 +5,7 @@ import time
 # Add project root to Python's import path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.tools.edgar import (
+from src.finsight.tools.edgar import (
     get_cik,
     get_filings,
     get_latest_filing,

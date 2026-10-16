@@ -3,7 +3,7 @@
 import json
 from pathlib import Path
 
-from src.tools.xbrl import extract_metric
+from src.finsight.tools.xbrl import extract_metric
 
 FACTS = json.loads(
     (Path(__file__).parent / "fixtures" / "companyfacts_sample.json").read_text()
