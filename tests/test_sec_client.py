@@ -5,7 +5,7 @@ import time
 # Add the project root to Python's import path.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.finsight.tools.sec_client import get_json, _cache_path
+from finsight.tools.sec_client import get_json, _cache_path
 
 # Public SEC API endpoint for Apple's company submissions.
 url = "https://data.sec.gov/submissions/CIK0000320193.json"

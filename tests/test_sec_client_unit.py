@@ -1,7 +1,7 @@
 import json
 import pytest
 
-from src.finsight.tools import sec_client
+from finsight.tools import sec_client
 
 
 def test_missing_user_agent(monkeypatch):
