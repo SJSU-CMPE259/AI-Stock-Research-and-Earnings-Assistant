@@ -1,0 +1,73 @@
+{
+  "sample": true,
+  "note": "MADE-UP values for development. Fiscal labels only (never calendar quarters). A Data teammate can later fill this same structure from real SEC data and nothing else changes.",
+  "company": {
+    "ticker": "AMD",
+    "name": "Advanced Micro Devices, Inc."
+  },
+  "revenue_quarterly": [
+    {
+      "fiscal_year": 2024,
+      "fiscal_period": "Q1",
+      "fiscal_label": "FY2024 Q1",
+      "period_end": "2024-03-30",
+      "value_usd": 5000000000,
+      "source": {"form": "10-Q", "accession": "0000000000-24-000001", "url": "https://sec.gov/sample/amd-10q-fy2024q1"}
+    },
+    {
+      "fiscal_year": 2024,
+      "fiscal_period": "Q2",
+      "fiscal_label": "FY2024 Q2",
+      "period_end": "2024-06-29",
+      "value_usd": 5400000000,
+      "source": {"form": "10-Q", "accession": "0000000000-24-000002", "url": "https://sec.gov/sample/amd-10q-fy2024q2"}
+    },
+    {
+      "fiscal_year": 2024,
+      "fiscal_period": "Q3",
+      "fiscal_label": "FY2024 Q3",
+      "period_end": "2024-09-28",
+      "value_usd": 5800000000,
+      "source": {"form": "10-Q", "accession": "0000000000-24-000003", "url": "https://sec.gov/sample/amd-10q-fy2024q3"}
+    },
+    {
+      "fiscal_year": 2024,
+      "fiscal_period": "Q4",
+      "fiscal_label": "FY2024 Q4",
+      "period_end": "2024-12-28",
+      "value_usd": 6200000000,
+      "source": {"form": "10-K", "accession": "0000000000-25-000001", "url": "https://sec.gov/sample/amd-10k-fy2024"}
+    },
+    {
+      "fiscal_year": 2025,
+      "fiscal_period": "Q1",
+      "fiscal_label": "FY2025 Q1",
+      "period_end": "2025-03-29",
+      "value_usd": 6600000000,
+      "source": {"form": "10-Q", "accession": "0000000000-25-000002", "url": "https://sec.gov/sample/amd-10q-fy2025q1"}
+    },
+    {
+      "fiscal_year": 2025,
+      "fiscal_period": "Q2",
+      "fiscal_label": "FY2025 Q2",
+      "period_end": "2025-06-28",
+      "value_usd": 7100000000,
+      "source": {"form": "10-Q", "accession": "0000000000-25-000003", "url": "https://sec.gov/sample/amd-10q-fy2025q2"}
+    }
+  ],
+  "passages": [
+    {"text": "Data center revenue grew strongly, driven by demand for AI accelerators and server CPUs.", "section": "MD&A", "source": {"form": "10-Q", "accession": "0000000000-25-000003", "url": "https://sec.gov/sample/amd-10q-fy2025q2#mda"}},
+    {"text": "The company expects continued momentum in its data center segment through the next fiscal year.", "section": "Outlook", "source": {"form": "10-Q", "accession": "0000000000-25-000003", "url": "https://sec.gov/sample/amd-10q-fy2025q2#outlook"}},
+    {"text": "Gaming segment revenue declined as console demand softened compared with the prior year.", "section": "MD&A", "source": {"form": "10-Q", "accession": "0000000000-25-000003", "url": "https://sec.gov/sample/amd-10q-fy2025q2#mda"}},
+    {"text": "Gross margin improved due to a richer product mix weighted toward higher-margin data center products.", "section": "MD&A", "source": {"form": "10-Q", "accession": "0000000000-25-000003", "url": "https://sec.gov/sample/amd-10q-fy2025q2#mda"}},
+    {"text": "Supply constraints for advanced packaging could limit the company's ability to meet AI demand.", "section": "Risk Factors", "source": {"form": "10-K", "accession": "0000000000-25-000001", "url": "https://sec.gov/sample/amd-10k-fy2024#risk"}},
+    {"text": "Intense competition in the CPU and GPU markets may pressure prices and margins.", "section": "Risk Factors", "source": {"form": "10-K", "accession": "0000000000-25-000001", "url": "https://sec.gov/sample/amd-10k-fy2024#risk"}},
+    {"text": "The company increased research and development spending to support its AI product roadmap.", "section": "MD&A", "source": {"form": "10-Q", "accession": "0000000000-25-000003", "url": "https://sec.gov/sample/amd-10q-fy2025q2#mda"}},
+    {"text": "Management remains optimistic about long-term growth opportunities in artificial intelligence.", "section": "Outlook", "source": {"form": "10-Q", "accession": "0000000000-25-000003", "url": "https://sec.gov/sample/amd-10q-fy2025q2#outlook"}}
+  ],
+  "quote": {
+    "price": 168.42,
+    "currency": "USD",
+    "as_of": "2025-10-13T20:00:00Z"
+  }
+}
