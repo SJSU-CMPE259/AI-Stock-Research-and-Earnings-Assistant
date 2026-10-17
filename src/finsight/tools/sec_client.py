@@ -21,7 +21,7 @@ import requests
 from dotenv import load_dotenv
 
 # Load .env from the project root
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
 load_dotenv(PROJECT_ROOT / ".env")
 
 USER_AGENT = os.getenv("SEC_USER_AGENT", "")
