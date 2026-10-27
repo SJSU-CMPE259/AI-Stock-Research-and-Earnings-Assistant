@@ -29,9 +29,10 @@ def test_unknown_ticker_raises_instead_of_zero_price():
 
 
 def test_missing_key(monkeypatch):
+    from finsight.tools import finnhub_client
     monkeypatch.delenv("FINNHUB_API_KEY", raising=False)
     with pytest.raises(RuntimeError, match="FINNHUB_API_KEY"):
-        prices._api_key()
+        finnhub_client.api_key()
 
 
 def test_get_quote_uses_cache(monkeypatch):
