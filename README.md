@@ -37,7 +37,7 @@ finsight/
 
 | Role | Owner | Folders |
 |------|-------|---------|
-| P1 Data | _name_ | `tools/`, `rag/` |
+| P1 Data | Anna | `tools/`, `rag/` |
 | P2 Analysis / NLP | _name_ | `analysis/` |
 | P3 Report | _name_ | `report/` |
 | P4 Agent core | _name_ | `memory/`, `orchestrator/`, `api/` |
