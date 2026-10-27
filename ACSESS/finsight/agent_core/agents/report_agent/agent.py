@@ -59,7 +59,8 @@ class ReportAgent(Agent):
         user = question if not convo else f"{question}\n\nRecent conversation:\n{convo}"
         messages = [{"role": "user", "content": f"{user}\n\nFacts:\n{facts_text}"}]
 
-        answer, how = self._answer_with_checks(llm, messages, valid_ids, facts_blob, facts)
+        tag = self._source_tag(memory)
+        answer, how = self._answer_with_checks(llm, messages, valid_ids, facts_blob, facts, tag)
         memory.put("answer", answer, self.name, description=f"final answer ({how})")
         return f"{self.name}: wrote answer ({how}; {len(valid_ids)} facts available)"
 
@@ -91,11 +92,25 @@ class ReportAgent(Agent):
                 facts.append(("Q1", txt))
                 lines.append(f"[Q1] {txt}")
                 blob.append(txt)
+        if memory.has("amd_news"):
+            for i, a in enumerate(memory.get("amd_news"), 1):
+                txt = f"{a['source']}, {a['date']}: {a['headline']}"
+                facts.append((f"H{i}", txt))
+                lines.append(f"[H{i}] {txt}")
+                blob.append(txt)
 
         valid_ids = {fid for fid, _ in facts}
         return facts, "\n".join(lines), valid_ids, " ".join(str(b) for b in blob)
 
-    def _answer_with_checks(self, llm, messages, valid_ids, facts_blob, facts):
+    @staticmethod
+    def _source_tag(memory: SharedMemory) -> str:
+        """Label the data provenance: live Finnhub quote/news vs sample fixtures."""
+        q = memory.get("amd_quote") if memory.has("amd_quote") else None
+        if (isinstance(q, dict) and q.get("live")) or memory.has("amd_news"):
+            return "(live: Finnhub)"
+        return "(sample data)"
+
+    def _answer_with_checks(self, llm, messages, valid_ids, facts_blob, facts, tag="(sample data)"):
         for attempt in (1, 2):
             raw = llm.complete(SYSTEM, messages, max_tokens=300, temperature=0.0).strip()
             ok, reason = self._check(raw, valid_ids, facts_blob)
@@ -108,7 +123,7 @@ class ReportAgent(Agent):
                     "IDs like [N1], and copy numbers exactly. Try again."
                 )},
             ]
-        return self._template(facts), "template fallback"
+        return self._template(facts, tag), "template fallback"
 
     @staticmethod
     def _check(answer: str, valid_ids: set[str], facts_blob: str):
@@ -123,6 +138,6 @@ class ReportAgent(Agent):
         return True, "ok"
 
     @staticmethod
-    def _template(facts: list[tuple[str, str]]) -> str:
+    def _template(facts: list[tuple[str, str]], tag: str = "(sample data)") -> str:
         body = " ".join(f"{txt} [{fid}]" for fid, txt in facts[:3])
-        return f"{body} (sample data)"
+        return f"{body} {tag}"
