@@ -1,0 +1,12 @@
+<svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="FinSight logo">
+  <!-- lens ring -->
+  <circle cx="17" cy="17" r="12.5" stroke="#E8A63A" stroke-width="2.4" fill="#111C2B"/>
+  <!-- handle -->
+  <rect x="26.2" y="25.4" width="11" height="3.6" rx="1.8" transform="rotate(45 26.2 25.4)" fill="#E8A63A"/>
+  <!-- rising line inside the lens -->
+  <path d="M10 21 L15 18 L19 19.5 L24 12.5" stroke="#22B894" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- candles -->
+  <rect x="13.6" y="17" width="2.2" height="5.2" rx="0.8" fill="#5B97D6"/>
+  <rect x="18" y="18.4" width="2.2" height="4" rx="0.8" fill="#5B97D6"/>
+  <circle cx="24" cy="12.5" r="2" fill="#22B894"/>
+</svg>
