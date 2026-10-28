@@ -46,6 +46,7 @@ def _run(orch: Orchestrator, question: str, ticker: str) -> None:
         "tr": tr, "ticker": ticker,
         "quote": mem.get("amd_quote"), "news": mem.get("amd_news"),
         "chart": mem.get("amd_chart"), "schart": mem.get("amd_sentiment_chart"),
+        "notes": mem.get("amd_notes"), "sentiment": mem.get("amd_sentiment"),
         "memtext": mem.describe() or "(empty)",
     }
     st.session_state.pending_mismatch = None
@@ -144,22 +145,74 @@ def render_agent_demo(company: str) -> None:
 
     chart = res["chart"]
     if tr.route == "numbers" and chart and chart.get("points"):
-        st.markdown('<div class="fs-label" style="margin-top:14px;">Revenue · viz_agent</div>',
-                    unsafe_allow_html=True)
+        st.markdown('<div class="fs-label" style="margin-top:14px;">Revenue · viz_agent '
+                    '<span style="color:#71869B;">· SAMPLE DATA</span></div>', unsafe_allow_html=True)
+        _delta_chips(res.get("notes"))
         st.altair_chart(revenue_chart(chart["points"], chart.get("note", "")), use_container_width=True)
-        if chart.get("note"):
-            st.caption(chart["note"] + "  ·  SAMPLE DATA")
+        st.caption("Deltas computed in Python from the quarterly figures (analysis_agent) · not financial advice.")
 
+    sent = res.get("sentiment")
     schart = res["schart"]
     if tr.route == "sentiment" and schart and schart.get("points"):
-        st.markdown('<div class="fs-label" style="margin-top:14px;">Filing sentiment · viz_agent</div>',
-                    unsafe_allow_html=True)
+        st.markdown('<div class="fs-label" style="margin-top:14px;">Filing sentiment · classify_agent '
+                    '<span style="color:#71869B;">· SAMPLE DATA</span></div>', unsafe_allow_html=True)
         st.altair_chart(sentiment_chart(schart["points"]), use_container_width=True)
-        if schart.get("note"):
-            st.caption(schart["note"] + "  ·  SAMPLE DATA")
+        _sentiment_detail(sent)
 
     with st.expander("Shared memory after this question"):
         st.code(res["memtext"])
+
+
+def _delta_chips(notes: list | None) -> None:
+    """QoQ / YoY deltas from analysis_agent's notes (Python-computed), as arrow chips."""
+    if not notes:
+        return
+    c = COLORS
+    chips = []
+    for n in notes:
+        v = n.get("values", {}) if isinstance(n, dict) else {}
+        for key, label in (("qoq_pct", "QoQ"), ("yoy_pct", "YoY")):
+            if key in v and isinstance(v[key], (int, float)):
+                pct = v[key]
+                up = pct >= 0
+                col = c["up"] if up else c["down"]
+                arrow = "▲" if up else "▼"
+                chips.append(
+                    f'<span class="fs-chip" style="background:{col}1a;color:{col};border-color:{col}55;">'
+                    f'{label} {arrow} <b class="fs-mono">&nbsp;{pct:+.1f}%</b></span>')
+    if chips:
+        st.markdown(f'<div style="margin:4px 0 8px;">{"".join(dict.fromkeys(chips))}</div>',
+                    unsafe_allow_html=True)
+
+
+def _sentiment_detail(sent: dict | None) -> None:
+    """Counts + % line and a click-to-open list of the labeled passages."""
+    if not isinstance(sent, dict):
+        return
+    c = COLORS
+    counts = sent.get("counts", {})
+    n = sent.get("n") or sum(counts.values()) or 1
+    order = [("positive", c["up"]), ("neutral", c["muted"]),
+             ("negative", c["down"]), ("uncertain", "#5A6B7A")]
+    line = "  ".join(
+        f'<span style="color:{col};font-weight:700;">{counts.get(k, 0)} {k}</span>'
+        f'<span style="color:{c["muted"]};">({counts.get(k, 0) / n * 100:.0f}%)</span>'
+        for k, col in order if counts.get(k))
+    st.markdown(f'<div class="fs-mono" style="font-size:0.9rem;margin:4px 0;">{line}</div>',
+                unsafe_allow_html=True)
+    labels = sent.get("labels") or []
+    if labels:
+        with st.expander(f"Show the {len(labels)} labeled passages"):
+            cmap = dict(order)
+            for lb in labels:
+                col = cmap.get(lb.get("label"), c["muted"])
+                flag = " ⚠ needs review" if lb.get("needs_review") else ""
+                st.markdown(
+                    f'<div style="padding:6px 0;border-bottom:1px solid {c["border"]};">'
+                    f'<span class="fs-chip" style="background:{col}1a;color:{col};border-color:{col}55;">'
+                    f'{lb.get("label", "")}{flag}</span> '
+                    f'<span style="color:{c["text_dim"]};font-size:0.86rem;">{lb.get("text", "")[:200]}</span></div>',
+                    unsafe_allow_html=True)
 
 
 def _render_news(news: list) -> None:
