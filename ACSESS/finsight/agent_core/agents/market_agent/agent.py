@@ -83,7 +83,9 @@ class MarketAgent(Agent):
             return "; no recent news"
         memory.put(
             "amd_news",
-            [{"headline": a.headline, "source": a.source, "date": a.date, "url": a.url}
+            [{"headline": a.headline, "source": a.source, "date": a.date, "url": a.url,
+              "summary": getattr(a, "summary", ""), "category": getattr(a, "category", ""),
+              "relevance": getattr(a, "relevance", "")}
              for a in articles],
             self.name,
             freshness="real_time",
