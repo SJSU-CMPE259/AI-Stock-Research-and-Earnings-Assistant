@@ -59,11 +59,12 @@ ports accept connections.
 
 ```bash
 .venv-mcp/bin/python mcp_server/server.py                 # stdio; normally the client starts it
-FINSIGHT_FAKE=1 npx @modelcontextprotocol/inspector .venv-mcp/bin/python mcp_server/server.py
+npx -y @modelcontextprotocol/inspector@2.13.0 -e FINSIGHT_FAKE=1 .venv-mcp/bin/python mcp_server/server.py
 ```
 
-Use the Inspector command (needs Node) rather than `mcp dev`, which runs the server
-under an unpinned `uv run --with mcp`.
+Use the Inspector command (needs Node >= 22.19) rather than `mcp dev`, which runs the server
+under an unpinned `uv run --with mcp`. Pass mode flags with `-e` so they reach the server.
+Drop `-e FINSIGHT_FAKE=1` for real mode.
 
 ## Cursor
 
