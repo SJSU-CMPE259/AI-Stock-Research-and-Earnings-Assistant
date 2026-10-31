@@ -1,0 +1,39 @@
+name: MCP server
+
+on:
+  push:
+    paths:
+      - 'ACSESS/finsight/mcp_server/**'
+      - 'ACSESS/finsight/agent_core/**'
+      - 'ACSESS/finsight/backend/app/tools/**'
+      - 'ACSESS/finsight/backend/app/settings.py'
+      - 'ACSESS/finsight/requirements-mcp.txt'
+      - '.github/workflows/mcp-server.yml'
+  pull_request:
+    paths:
+      - 'ACSESS/finsight/mcp_server/**'
+      - 'ACSESS/finsight/agent_core/**'
+      - 'ACSESS/finsight/backend/app/tools/**'
+      - 'ACSESS/finsight/backend/app/settings.py'
+      - 'ACSESS/finsight/requirements-mcp.txt'
+      - '.github/workflows/mcp-server.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      # Offline: FakeLLM + keyword routing; Finnhub and SEC are stubbed in the tests. No real keys.
+      FINSIGHT_FAKE: '1'
+      SEC_USER_AGENT: 'FinSight CI ci@example.com'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      # Own requirements file: mcp 1.x needs pydantic>=2.11, the team pins 2.6.1.
+      - run: pip install -r ACSESS/finsight/requirements-mcp.txt
+      - run: python -m pytest mcp_server/tests agent_core/tests -m "not network" -q
+        working-directory: ACSESS/finsight
