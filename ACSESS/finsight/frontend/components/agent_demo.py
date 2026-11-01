@@ -11,6 +11,7 @@ import streamlit as st
 from agent_core.llm import FakeLLM, MistralLLM
 from agent_core.memory import Conversation, SharedMemory
 from agent_core.orchestrator import Orchestrator
+from agent_core.orchestrator import resolve_ticker
 from agent_core.orchestrator import route as keyword_route
 from frontend.charts import revenue_chart, sentiment_chart
 from frontend.companies import SAMPLE_TICKER, company_name
@@ -19,12 +20,18 @@ from frontend.components.pipeline import render_pipeline, render_route_card
 from frontend.components.quote_card import render_quote_card
 from frontend.theme import COLORS
 
+# Grouped so the set exercises every agent across the routes:
+#   numbers   -> Data, Analysis, Viz, Report      sentiment -> Data, Classify, Viz, Report
+#   real_time -> Market, Report                    text      -> Data, Report      refuse -> router only
 SAMPLES = [
-    "What was AMD's revenue last quarter?",
-    "How did it change from the year before?",
-    "What is the tone of AMD's recent filings?",
-    "What is {co} trading at right now?",
-    "Should I buy AMD?",
+    "What was AMD's revenue last quarter?",                 # numbers
+    "How did AMD's revenue change year over year?",         # numbers (QoQ/YoY deltas)
+    "What is the tone of AMD's recent filings?",            # sentiment
+    "Is management optimistic or cautious in AMD's filings?",  # sentiment
+    "Tell me about AMD's business and products",            # text
+    "What is {co} trading at right now?",                   # real_time (price + news)
+    "What's the latest on {co} today?",                     # real_time
+    "Should I buy AMD?",                                    # refuse (no agents)
 ]
 
 
@@ -107,11 +114,14 @@ def render_agent_demo(company: str) -> None:
 
     if run and question.strip():
         intended = keyword_route(question)
-        if intended in ("numbers", "sentiment") and company != SAMPLE_TICKER:
-            st.session_state.pending_mismatch = {"q": question, "intended": intended, "company": company}
+        # Use the ticker named in the question if any (so "AMD revenue" runs even when the
+        # sidebar shows another company); else fall back to the sidebar company.
+        eff = resolve_ticker(question, Conversation()) or company
+        if intended in ("numbers", "sentiment") and eff != SAMPLE_TICKER:
+            st.session_state.pending_mismatch = {"q": question, "intended": intended, "company": eff}
             st.session_state.agent_result = None
         else:
-            _run(orch, question, ticker=company)
+            _run(orch, question, ticker=eff)
 
     pm = st.session_state.get("pending_mismatch")
     if pm:
