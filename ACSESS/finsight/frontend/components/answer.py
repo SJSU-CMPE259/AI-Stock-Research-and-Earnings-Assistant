@@ -17,10 +17,11 @@ from frontend.theme import COLORS
 _CITE = re.compile(r"\[([A-Z]\d+(?:\s*,\s*[A-Z]\d+)*)\]")
 _ID = re.compile(r"[A-Z]\d+")
 
-# citation id prefix → (source kind, color)
+# citation id prefix → (source kind, color). Convention: N notes, P passages, Q quotes,
+# H headlines, S sentiment, F filing sections.
 _KIND = {"N": ("note", COLORS["python"]), "P": ("passage", COLORS["python"]),
-         "S": ("filing", COLORS["sec"]), "Q": ("quote", COLORS["finnhub"]),
-         "H": ("news", COLORS["finnhub"])}
+         "F": ("filing", COLORS["sec"]), "S": ("sentiment", COLORS["mistral"]),
+         "Q": ("quote", COLORS["finnhub"]), "H": ("news", COLORS["finnhub"])}
 
 
 def _chip(cid: str) -> str:

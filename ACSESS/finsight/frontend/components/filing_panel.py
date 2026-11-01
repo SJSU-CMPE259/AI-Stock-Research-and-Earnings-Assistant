@@ -43,6 +43,18 @@ def _fetch(company: str, form_type: str):
     return meta, secs
 
 
+@st.cache_data(ttl=86400, show_spinner=False)
+def _key_points(accession: str, company: str, _system: str) -> str:
+    """Cited 'key points' summary (cached by accession). _system carries the excerpts
+    (underscore -> not part of the cache key, so it's keyed by the filing itself)."""
+    from backend.app.llm import get_llm
+    q = ("List 3-4 key points a reader should know from this filing. Put a [F#] citation "
+         "after each. Do NOT include any number unless you copy it verbatim from an excerpt. "
+         "No investment advice.")
+    return get_llm().complete(system=_system, messages=[{"role": "user", "content": q}],
+                              max_tokens=400, temperature=0.2)
+
+
 def _error_hint(e: Exception) -> str:
     msg = str(e)
     if "SEC_USER_AGENT" in msg or "User-Agent" in msg:
@@ -81,7 +93,7 @@ def _section_navigator(sections: list) -> None:
         stub = n < 2000
         warn = (f'<span class="fs-chip" style="background:{c["laya"]}1a;color:{c["laya"]};'
                 f'border-color:{c["laya"]}55;">⚠ stub</span>') if stub else ""
-        with st.expander(f"[S{i}] {s['name']} · {n:,} chars", expanded=(i == 1 and not stub)):
+        with st.expander(f"[F{i}] {s['name']} · {n:,} chars", expanded=(i == 1 and not stub)):
             if warn:
                 st.markdown(warn + " &nbsp;this section parsed short — likely a table-of-contents stub.",
                             unsafe_allow_html=True)
@@ -94,29 +106,37 @@ def _section_navigator(sections: list) -> None:
             )
 
 
+def _filing_system(company: str, meta: dict, sections: list) -> str:
+    context = "\n\n".join(f"[F{i}] {s['name']}:\n{s['text'][:3000]}"
+                          for i, s in enumerate(sections, 1))
+    return (
+        "You are FinSight, a financial research assistant. Answer using ONLY the SEC filing "
+        "excerpts below. Put a citation like [F1] right after each sentence that uses a source. "
+        "If the answer is not in the excerpts, say so plainly. Never give financial advice or "
+        f"invent numbers.\n\nCompany: {company} — {meta['form']}, filed {meta['filing_date']}.\n\n"
+        f"FILING EXCERPTS:\n{context}")
+
+
 def _ask(company: str, meta: dict, sections: list, question: str) -> None:
     c = COLORS
-    with st.spinner("Mistral is reading the filing on the GPU…"):
-        try:
-            from backend.app.llm import get_llm
-            context = "\n\n".join(f"[S{i}] {s['name']}:\n{s['text'][:3000]}"
-                                  for i, s in enumerate(sections, 1))
-            system = (
-                "You are FinSight, a financial research assistant. Answer using ONLY the SEC filing "
-                "excerpts below. Put a citation like [S1] right after each sentence that uses a source. "
-                "If the answer is not in the excerpts, say so plainly. Never give financial advice or "
-                f"invent numbers.\n\nCompany: {company} — {meta['form']}, filed {meta['filing_date']}.\n\n"
-                f"FILING EXCERPTS:\n{context}")
-            answer = get_llm().complete(system=system,
-                                        messages=[{"role": "user", "content": question}],
-                                        max_tokens=512, temperature=0.2)
-        except Exception as e:  # noqa: BLE001
-            emsg = str(e)
-            hint = ("The GPU endpoint is unreachable (Mistral tunnel on :8000 is down). "
-                    "Start the tunnel, or this answer can't be generated.") if "Connection" in emsg \
-                else emsg
-            st.error(f"Couldn't generate the answer: {hint}")
-            return
+    system = _filing_system(company, meta, sections)
+    draft = st.empty()
+    try:
+        from backend.app.llm import get_llm
+        with draft.container():
+            st.markdown(f'<div class="fs-label" style="color:{c["mistral"]};">Drafting on the GPU…</div>',
+                        unsafe_allow_html=True)
+            answer = st.write_stream(
+                get_llm().stream(system, [{"role": "user", "content": question}],
+                                 max_tokens=512, temperature=0.2))
+    except Exception as e:  # noqa: BLE001
+        draft.empty()
+        emsg = str(e)
+        hint = ("The GPU endpoint is unreachable (Mistral tunnel on :8000 is down). "
+                "Start the tunnel, or this answer can't be generated.") if "Connection" in emsg else emsg
+        st.error(f"Couldn't generate the answer: {hint}")
+        return
+    draft.empty()  # replace the live draft with the cited final (rendered in history)
     st.session_state.filing_chat.append({"q": question, "a": answer})
 
 
@@ -127,7 +147,7 @@ def render_filing_qa(company: str, form_type: str) -> None:
     st.markdown(f'<div style="font-size:1.5rem;font-weight:800;">{company_name(company)} · filings</div>'
                 f'<div style="color:{c["muted"]};font-size:0.9rem;margin-bottom:10px;">'
                 'Fetch the latest filing from SEC EDGAR, browse its sections, and ask — answers cite '
-                '[S] sections.</div>', unsafe_allow_html=True)
+                '[F] sections.</div>', unsafe_allow_html=True)
 
     if st.button(f"Fetch latest {form_type}", use_container_width=True, key="fetch_filing"):
         try:
@@ -136,6 +156,7 @@ def render_filing_qa(company: str, form_type: str) -> None:
             st.session_state.filing_sections = sections
             st.session_state.filing_company = company
             st.session_state.filing_chat = []
+            st.session_state.filing_keypoints = None
         except Exception as e:  # noqa: BLE001
             st.error(f"Could not fetch filing: {_error_hint(e)}")
 
@@ -151,6 +172,19 @@ def render_filing_qa(company: str, form_type: str) -> None:
     left, right = st.columns([3, 2])
     with left:
         _header_card(company, form_type, meta)
+        if st.button("✦ Summarize key points (Mistral)", key="keypts"):
+            try:
+                st.session_state.filing_keypoints = _key_points(
+                    meta["accession"], company, _filing_system(company, meta, sections))
+            except Exception as e:  # noqa: BLE001
+                st.error(f"Couldn't summarize: {_error_hint(e)}")
+        kp = st.session_state.get("filing_keypoints")
+        if kp:
+            st.markdown(
+                f'<div class="fs-card" style="border-left:3px solid {c["mistral"]};margin-top:8px;">'
+                f'<div class="fs-label" style="color:{c["mistral"]};">Key points · Mistral · cited</div>'
+                f'<div style="margin-top:6px;line-height:1.55;">{_inline(kp)}</div></div>',
+                unsafe_allow_html=True)
         _section_navigator(sections)
     with right:
         st.markdown('<div style="font-size:1.3rem;font-weight:800;">Ask Mistral</div>', unsafe_allow_html=True)
