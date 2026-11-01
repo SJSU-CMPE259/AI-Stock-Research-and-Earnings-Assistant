@@ -1,0 +1,10 @@
+# Per-company XBRL concept overrides (D2 "concept mapping per company").
+# Defaults live in src/finsight/tools/xbrl.py (METRICS). Only list a company
+# here if the defaults pick the wrong concept or find nothing for it.
+# Run scripts/check_quality.py to see which metrics are missing per company.
+#
+# Example:
+# overrides:
+#   JPM:
+#     revenue: [RevenuesNetOfInterestExpense, Revenues]
+overrides: {}
