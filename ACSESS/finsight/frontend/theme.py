@@ -99,6 +99,14 @@ def apply_theme() -> None:
         .fs-label {{ font-size:0.7rem; letter-spacing:0.08em; text-transform:uppercase;
             color:{c['muted']}; font-weight:700; }}
         a {{ color: {c['finnhub']}; }}
+        /* disabled textareas (filing section previews) must stay readable */
+        [data-testid="stTextArea"] textarea:disabled {{
+            color: {c['text_dim']} !important; -webkit-text-fill-color: {c['text_dim']} !important;
+            opacity: 1 !important; font-family: {FONT_MONO}; font-size: 0.82rem; }}
+        /* expander header + body readable */
+        [data-testid="stExpander"] summary {{ color: {c['text']} !important; font-weight: 600; }}
+        [data-testid="stExpander"] {{ border-color: {c['border']} !important; }}
+        details {{ background: {c['surface']}; border-radius: 10px; }}
         /* captions readable on dark (a11y contrast) */
         [data-testid="stCaptionContainer"], .stCaption, small {{ color: {c['text_dim']} !important; }}
         [data-testid="stMetricLabel"] {{ color: {c['muted']}; }}
