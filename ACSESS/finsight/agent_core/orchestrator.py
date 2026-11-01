@@ -5,6 +5,7 @@ in priority order. The LLM is never used to route.
 """
 from __future__ import annotations
 
+import re
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -20,8 +21,12 @@ from agent_core.memory import Conversation, SharedMemory
 REFUSAL = (
     "I can't give investment advice or buy/sell/hold recommendations. I can share the "
     "underlying facts instead — for example revenue, margins, or the tone of recent "
-    "filings. (sample data)"
+    "filings."
 )
+
+# whole-word advice match so "share buybacks", "largest shareholders" and
+# "selling, general and administrative" are NOT mistaken for buy/sell/hold advice.
+_ADVICE = re.compile(r"\b(buy|sell|hold|invest|recommend)\b", re.IGNORECASE)
 
 KNOWN_TICKERS = {"AMD", "NVDA", "AAPL", "MSFT", "TSLA", "INTC"}
 
@@ -61,7 +66,7 @@ def resolve_ticker(question: str, conversation: Conversation) -> str | None:
 def route(question: str) -> str:
     """Pick a path by keyword, in priority order."""
     q = question.lower()
-    if any(w in q for w in ["buy", "sell", "hold", "should i invest", "should i buy"]):
+    if _ADVICE.search(q):
         return "refuse"
     if any(w in q for w in ["price", "right now", "today", "current"]):
         return "real_time"
@@ -95,6 +100,7 @@ class Orchestrator:
     def ask(self, question: str) -> Trace:
         start = time.time()
         run_id = f"run-{uuid.uuid4().hex[:8]}"
+        prev_ticker = self.conversation.current_ticker
         ticker = resolve_ticker(question, self.conversation)
         r, source, conf = self._route(question)
         trace = Trace(run_id=run_id, question=question, ticker=ticker, route=r,
@@ -109,6 +115,15 @@ class Orchestrator:
 
         if ticker:
             self.conversation.current_ticker = ticker
+
+        # A new ticker must not reuse or cite the previous ticker's facts: drop the
+        # ticker-scoped memory (data/quote/news/sentiment/charts) when the ticker changes.
+        if ticker and prev_ticker and ticker != prev_ticker:
+            dropped = self.memory.forget_ticker_scope()
+            if dropped:
+                trace.steps.append(
+                    f"ticker changed {prev_ticker} -> {ticker}: cleared {', '.join(dropped)}"
+                )
 
         self.memory.put(
             "conversation_state", self.conversation.state_text(), "orchestrator",

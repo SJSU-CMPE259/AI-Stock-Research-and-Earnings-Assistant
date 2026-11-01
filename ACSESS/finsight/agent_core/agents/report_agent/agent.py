@@ -111,11 +111,12 @@ class ReportAgent(Agent):
         return "(sample data)"
 
     def _answer_with_checks(self, llm, messages, valid_ids, facts_blob, facts, tag="(sample data)"):
+        engine = "fake" if "Fake" in type(llm).__name__ else "mistral"  # honest label in offline mode
         for attempt in (1, 2):
             raw = llm.complete(SYSTEM, messages, max_tokens=300, temperature=0.0).strip()
             ok, reason = self._check(raw, valid_ids, facts_blob)
             if ok:
-                return raw, f"mistral, attempt {attempt}"
+                return raw, f"{engine}, attempt {attempt}"
             messages = messages + [
                 {"role": "assistant", "content": raw},
                 {"role": "user", "content": (
