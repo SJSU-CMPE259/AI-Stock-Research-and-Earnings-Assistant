@@ -70,7 +70,7 @@ async def list_filings(ticker: str, form: str = "10-K", limit: int = 5) -> dict[
 @mcp.tool(annotations=READ_ONLY)
 async def get_filing_section(ticker: str, form: str, item: str, max_chars: int = 8000,
                              offset: int = 0) -> dict[str, Any]:
-    """Text of one Item from the company's latest 10-K or 10-Q, cited as [S1].
+    """Text of one Item from the company's latest 10-K or 10-Q, cited as [F1].
 
     item: e.g. "Item 1A", "1a", "risk factors", "Item 7" or "md&a". Long sections are paged:
     call again with offset=next_offset until next_offset is null. max_chars: 1-50000.

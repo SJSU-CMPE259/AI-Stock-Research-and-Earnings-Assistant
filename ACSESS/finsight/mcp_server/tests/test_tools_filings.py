@@ -68,7 +68,7 @@ def test_filing_section_item_aliases(edgar, item):
     assert out["item"] == "Item 1A"
     assert out["text"].startswith("Item 1A. Risk Factors")
     assert "Business paragraph" not in out["text"]
-    assert out["citation"] == f"[S1] NVDA 10-K filed 2026-02-25, Item 1A ({URL})"
+    assert out["citation"] == f"[F1] NVDA 10-K filed 2026-02-25, Item 1A ({URL})"
     assert out["filing"] == {"accession": "0001045810-26-000010", "filing_date": "2026-02-25", "url": URL}
     assert out["content_type"] == "external_document_text"
 

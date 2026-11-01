@@ -118,13 +118,13 @@ def test_list_filings_over_protocol(offline):
     assert r.structuredContent["filings"][0]["accession"] == "0001045810-26-000010"
 
 
-def test_get_filing_section_over_protocol_pages_with_s1_citation(offline):
+def test_get_filing_section_over_protocol_pages_with_f1_citation(offline):
     r = _call("get_filing_section", {"ticker": "NVDA", "form": "10-K", "item": "risk factors",
                                      "max_chars": 500})
     assert not r.isError
     out = r.structuredContent
     assert out["item"] == "Item 1A" and out["returned_chars"] == 500 and out["next_offset"] == 500
-    assert CITATION.search(out["citation"]).group() == "[S1]"
+    assert CITATION.search(out["citation"]).group() == "[F1]"
 
 
 def test_ask_finsight_over_protocol_refuses_without_llm(offline):

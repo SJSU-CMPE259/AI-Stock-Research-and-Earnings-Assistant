@@ -3,7 +3,7 @@
 Plain Python with no MCP import, so tests and the notebook can call these directly;
 server.py only registers them. The logic lives in agent_core and backend: this file
 validates arguments, shapes outputs into plain dicts and adds citation IDs
-([Q1] quote, [H#] headlines, [S1] filing section).
+([Q1] quote, [H#] headlines, [F1] filing section).
 
 Errors are raised, never papered over: in particular get_quote never falls back to
 the bundled sample, because that sample is AMD's price for every ticker.
@@ -142,7 +142,7 @@ def _sections(filing) -> dict[str, str]:
 
 def get_filing_section(ticker: str, form: str, item: str, max_chars: int = 8000,
                        offset: int = 0) -> dict[str, Any]:
-    """One Item from the latest 10-K/10-Q, paged by max_chars/offset, cited as [S1]."""
+    """One Item from the latest 10-K/10-Q, paged by max_chars/offset, cited as [F1]."""
     t, f = ticker.upper().strip(), form.upper().strip()
     patterns = FilingParser.ITEM_PATTERNS.get(f)
     if not patterns:
@@ -175,7 +175,7 @@ def get_filing_section(ticker: str, form: str, item: str, max_chars: int = 8000,
         "form": f,
         "item": name,
         "filing": {"accession": filing.accession, "filing_date": filing.filing_date, "url": filing.url},
-        "citation": f"[S1] {t} {f} filed {filing.filing_date}, {name} ({filing.url})",
+        "citation": f"[F1] {t} {f} filed {filing.filing_date}, {name} ({filing.url})",
         "total_chars": len(text),
         "offset": offset,
         "returned_chars": len(chunk),
@@ -228,8 +228,9 @@ def ask_finsight(question: str, new_conversation: bool = False) -> dict[str, Any
         if new_conversation:
             orch.memory, orch.conversation = SharedMemory(), Conversation()
         elif resolve_ticker(q, orch.conversation) != orch.conversation.current_ticker:
-            # Memory keys carry no ticker, so the last company's quote, news and filing data
-            # would be reused and cited for this one. A refused question also lands here,
+            # Memory keys carry no ticker, so a new company must start from empty memory.
+            # Orchestrator.ask now does the same (forget_ticker_scope); this guard is
+            # redundant and can go after review. A refused question also lands here,
             # without moving current_ticker; that only costs a re-fetch.
             orch.memory = SharedMemory()
         trace = orch.ask(q)

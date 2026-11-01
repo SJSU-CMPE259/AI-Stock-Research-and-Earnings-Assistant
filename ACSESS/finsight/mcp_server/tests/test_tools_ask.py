@@ -149,8 +149,6 @@ def test_ask_same_ticker_followup_still_reuses(orch):
     assert out["reused"] == ["amd_quote"]
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError,
-                   reason="K3: keyword router matches substrings (buy/hold/sell); agent_core owns it")
 @pytest.mark.parametrize("question", [
     "How much did AMD spend on share buybacks last year?",
     "Who are NVDA's largest shareholders?",

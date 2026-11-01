@@ -16,7 +16,7 @@ writes the answer.
 | `get_quote` | `ticker` | live Finnhub price, change, high/low, open, previous close, `live: true` (cached 60 s). Errors instead of returning sample data | `[Q1]` |
 | `get_company_news` | `ticker`, `days=7` (1–365), `limit=5` (1–20) | articles naming the company, newest first, summaries trimmed to ~300 chars, labeled `untrusted_external_text` | `[H1]`… |
 | `list_filings` | `ticker`, `form="10-K"`, `limit=5` (1–20) | SEC EDGAR filings: dates, accession, URL | — |
-| `get_filing_section` | `ticker`, `form` (10-K/10-Q), `item`, `max_chars=8000` (1–50000), `offset=0` | one Item of the latest filing, paged: call again with `offset=next_offset` until it is null | `[S1]` |
+| `get_filing_section` | `ticker`, `form` (10-K/10-Q), `item`, `max_chars=8000` (1–50000), `offset=0` | one Item of the latest filing, paged: call again with `offset=next_offset` until it is null | `[F1]` |
 | `ask_finsight` | `question` (≤ 2000 chars), `new_conversation=false` | answer with the agents' citations, `route`, `steps`, `reused`, `quote_live`, `data_mode` (`live`/`sample`/`mixed`), `warnings` | as returned |
 
 `item` accepts `"Item 1A"`, `"1a"`, `"risk factors"`, `"Item 7"`, `"md&a"` and so on
@@ -95,11 +95,5 @@ same command (`.github/workflows/mcp-server.yml`).
   `get_filing_section`.
 - **Tickers.** `ask_finsight` recognizes AMD, NVDA, AAPL, MSFT, TSLA and INTC; anything
   else falls back to AMD with a warning. The direct tools take any US ticker.
-- **Keyword routing** (fake mode, or when Laya is down) matches substrings, so "share
-  buybacks", "largest shareholders" and "selling, general and administrative" are
-  refused as advice. Kept visible as strict `xfail` tests in `test_tools_ask.py`; remove
-  the marker when the router is fixed.
-- **Citation IDs.** `[S1]` means a filing section here but sentiment in `report_agent`.
-  To be agreed with the team.
 - **Filing freshness.** The backend SEC client caches responses on disk with no expiry,
   so "latest filing" is whatever was fetched first until `data/` is cleared.
