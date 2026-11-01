@@ -81,6 +81,19 @@ def test_quote_reused_while_fresh_then_expires():
     assert "amd_quote" not in expired.reused  # re-fetched
 
 
+def test_fresh_quote_not_reused_across_tickers():
+    """A fresh AMD quote must NOT be reused for an NVDA question (ticker must match)."""
+    mem = SharedMemory()
+    orch = Orchestrator(FakeLLM(), memory=mem, conversation=Conversation())
+
+    orch.ask("What is AMD's stock price right now?")
+    assert mem.get("amd_quote")["ticker"] == "AMD"
+
+    nvda = orch.ask("What is NVDA's stock price right now?")  # within TTL, different ticker
+    assert "amd_quote" not in nvda.reused  # re-fetched, not reused
+    assert mem.get("amd_quote")["ticker"] == "NVDA"
+
+
 # ---- report check: fake IDs and fabricated numbers ------------------------
 
 def test_report_check_catches_fake_id():

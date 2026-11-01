@@ -120,7 +120,7 @@ class Orchestrator:
 
             if self._reuse_stored_data(agent, trace):
                 continue
-            if self._reuse_fresh_quote(agent, trace):
+            if self._reuse_fresh_quote(agent, trace, ticker):
                 continue
 
             try:
@@ -149,10 +149,16 @@ class Orchestrator:
             return True
         return False
 
-    def _reuse_fresh_quote(self, agent, trace: Trace) -> bool:
-        """Skip market_agent if the real_time quote is younger than QUOTE_TTL_S."""
+    def _reuse_fresh_quote(self, agent, trace: Trace, ticker: str | None) -> bool:
+        """Skip market_agent only if a quote for THIS ticker is younger than QUOTE_TTL_S.
+
+        Must match on ticker: a fresh AMD quote must not be reused for an NVDA question.
+        """
         if not isinstance(agent, MarketAgent) or not self.memory.has("amd_quote"):
             return False
+        quote = self.memory.get("amd_quote")
+        if not isinstance(quote, dict) or quote.get("ticker") != ticker:
+            return False  # different (or unknown) ticker -> fetch fresh
         age = self.memory.age_seconds("amd_quote")
         if age is not None and age < QUOTE_TTL_S:
             trace.steps.append(
