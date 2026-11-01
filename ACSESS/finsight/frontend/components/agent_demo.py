@@ -27,26 +27,22 @@ from frontend.theme import COLORS
 # ANY company via Finnhub. Numbers/Sentiment/Business run on bundled AMD sample data only,
 # so they stay AMD and are labelled as such. ({co} is substituted at render time.)
 SAMPLE_GROUPS = [
-    ("Real-time · {co}", "Market → Report  ·  live Finnhub, any company", [
+    ("Live price & news · {co}", "any company", [
         "What is {co} trading at right now?",
         "What's the latest news on {co} today?",
-        "How is {co}'s stock moving today?",
     ]),
-    ("Numbers · AMD sample", "Data → Analysis → Viz → Report", [
+    ("Revenue & growth · AMD", "Data → Analysis → Viz → Report", [
         "What was AMD's revenue last quarter?",
-        "How did AMD's revenue change quarter over quarter?",
         "How did AMD's revenue change year over year?",
     ]),
-    ("Sentiment · AMD sample", "Data → Classify → Viz → Report", [
+    ("Filing sentiment · AMD", "Data → Classify → Viz → Report", [
         "What is the tone of AMD's recent filings?",
-        "Is management optimistic or cautious in AMD's filings?",
     ]),
-    ("Business · AMD sample", "Data → Report", [
+    ("Business · AMD", "Data → Report", [
         "Tell me about AMD's business and products",
     ]),
-    ("Guardrail · {co}", "router refuses — never gives advice", [
+    ("Advice guardrail · {co}", "router refuses", [
         "Should I buy {co}?",
-        "Is {co} a good investment right now?",
     ]),
 ]
 
@@ -116,26 +112,22 @@ def render_agent_demo(company: str) -> None:
 
     _context_chips(orch)
 
-    # Clickable sample chips, grouped by route — each click runs that question.
-    st.markdown('<div class="fs-label">Try a question — each runs only the agents it needs</div>',
-                unsafe_allow_html=True)
+    # Type-your-own first; sample questions tucked in an expander to keep the view clean.
+    question = st.text_input("Ask a question", key="agent_q",
+                             placeholder="Ask about AMD, or pick a sample below…")
     clicked = None
-    for title, agents, qs in SAMPLE_GROUPS:
-        title = title.replace("{co}", company)
-        st.markdown(
-            f'<div style="margin:8px 0 2px;"><span class="fs-chip" style="background:{c["surface2"]};'
-            f'color:{c["text_dim"]};border-color:{c["border"]};">{title}</span>'
-            f'<span style="color:{c["muted"]};font-size:0.74rem;margin-left:8px;" class="fs-mono">{agents}</span></div>',
-            unsafe_allow_html=True)
-        qs = [q.replace("{co}", company) for q in qs]
-        for i in range(0, len(qs), 2):
-            cols = st.columns(2)
-            for j, q in enumerate(qs[i:i + 2]):
-                if cols[j].button(q, key=f"samp_{title}_{i + j}", use_container_width=True):
+    with st.expander("💡 Sample questions — click one to run", expanded=True):
+        for title, agents, qs in SAMPLE_GROUPS:
+            title = title.replace("{co}", company)
+            st.markdown(
+                f'<div style="margin:10px 0 4px;"><b style="font-size:0.9rem;">{title}</b>'
+                f'<span style="color:{c["muted"]};font-size:0.72rem;margin-left:10px;" class="fs-mono">'
+                f'{agents}</span></div>',
+                unsafe_allow_html=True)
+            cols = st.columns(len(qs)) if len(qs) > 1 else [st]
+            for j, q in enumerate([x.replace("{co}", company) for x in qs]):
+                if cols[j].button(q, key=f"samp_{title}_{j}", use_container_width=True):
                     clicked = q
-
-    question = st.text_input("Or type your own", key="agent_q", placeholder="Ask about AMD…",
-                             label_visibility="collapsed")
     r1, r2 = st.columns(2)
     run = r1.button("▶ Run agents", type="primary", use_container_width=True)
     if r2.button("↻ New conversation", use_container_width=True):
