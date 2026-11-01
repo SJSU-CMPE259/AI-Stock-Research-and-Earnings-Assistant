@@ -619,7 +619,7 @@ with col2:
 
                         max_chars_per_section = 3000
                         context = "\n\n".join(
-                            f"[S{i}] {s.name}:\n{s.text[:max_chars_per_section]}"
+                            f"[F{i}] {s.name}:\n{s.text[:max_chars_per_section]}"
                             for i, s in enumerate(sections, 1)
                         )
 
@@ -627,7 +627,7 @@ with col2:
                             "You are FinSight, a financial research assistant. "
                             "Answer the question using ONLY the SEC filing excerpts "
                             "below. Cite the sources you use with their tags like "
-                            "[S1], [S2]. If the answer is not in the excerpts, say so "
+                            "[F1], [F2]. If the answer is not in the excerpts, say so "
                             "plainly. Never give financial advice or invent numbers.\n\n"
                             f"Company: {company} — {filing.form}, filed {filing.filing_date}.\n\n"
                             f"FILING EXCERPTS:\n{context}"
@@ -648,7 +648,7 @@ with col2:
                             )
                             st.markdown(answer)
                             chips = "".join(
-                                f'<span class="src-chip">[S{i}] {s.name}</span>'
+                                f'<span class="src-chip">[F{i}] {s.name}</span>'
                                 for i, s in enumerate(sections, 1)
                             )
                             st.markdown(

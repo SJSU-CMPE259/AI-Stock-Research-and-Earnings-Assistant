@@ -56,6 +56,17 @@ class SharedMemory:
     def has(self, name: str) -> bool:
         return name in self._items
 
+    def forget(self, name: str) -> None:
+        self._items.pop(name, None)
+
+    def forget_ticker_scope(self, prefix: str = "amd_") -> list[str]:
+        """Drop all ticker-specific items (per-company data/quote/news/sentiment/charts)
+        so a new ticker never reuses or cites the previous ticker's facts."""
+        dropped = [k for k in self._items if k.startswith(prefix)]
+        for k in dropped:
+            del self._items[k]
+        return dropped
+
     def list(self) -> list[str]:
         return list(self._items.keys())
 
