@@ -20,18 +20,34 @@ from frontend.components.pipeline import render_pipeline, render_route_card
 from frontend.components.quote_card import render_quote_card
 from frontend.theme import COLORS
 
-# Grouped so the set exercises every agent across the routes:
-#   numbers   -> Data, Analysis, Viz, Report      sentiment -> Data, Classify, Viz, Report
-#   real_time -> Market, Report                    text      -> Data, Report      refuse -> router only
-SAMPLES = [
-    "What was AMD's revenue last quarter?",                 # numbers
-    "How did AMD's revenue change year over year?",         # numbers (QoQ/YoY deltas)
-    "What is the tone of AMD's recent filings?",            # sentiment
-    "Is management optimistic or cautious in AMD's filings?",  # sentiment
-    "Tell me about AMD's business and products",            # text
-    "What is {co} trading at right now?",                   # real_time (price + news)
-    "What's the latest on {co} today?",                     # real_time
-    "Should I buy AMD?",                                    # refuse (no agents)
+# Curated AMD demo set, grouped by the route each question takes (and the agents it
+# runs). A single question uses only its route's agents by design; across the set every
+# agent runs. All AMD so every question has real sample/live data.
+# {co} = the selected sidebar company. Real-time (price/news) and the guardrail work for
+# ANY company via Finnhub. Numbers/Sentiment/Business run on bundled AMD sample data only,
+# so they stay AMD and are labelled as such. ({co} is substituted at render time.)
+SAMPLE_GROUPS = [
+    ("Real-time · {co}", "Market → Report  ·  live Finnhub, any company", [
+        "What is {co} trading at right now?",
+        "What's the latest news on {co} today?",
+        "How is {co}'s stock moving today?",
+    ]),
+    ("Numbers · AMD sample", "Data → Analysis → Viz → Report", [
+        "What was AMD's revenue last quarter?",
+        "How did AMD's revenue change quarter over quarter?",
+        "How did AMD's revenue change year over year?",
+    ]),
+    ("Sentiment · AMD sample", "Data → Classify → Viz → Report", [
+        "What is the tone of AMD's recent filings?",
+        "Is management optimistic or cautious in AMD's filings?",
+    ]),
+    ("Business · AMD sample", "Data → Report", [
+        "Tell me about AMD's business and products",
+    ]),
+    ("Guardrail · {co}", "router refuses — never gives advice", [
+        "Should I buy {co}?",
+        "Is {co} a good investment right now?",
+    ]),
 ]
 
 
@@ -100,10 +116,26 @@ def render_agent_demo(company: str) -> None:
 
     _context_chips(orch)
 
-    samples = [s.replace("{co}", company) for s in SAMPLES]
-    picked = st.selectbox("Sample question (or type your own)", ["(type your own)"] + samples)
-    question = st.text_input("Question", value="" if picked == "(type your own)" else picked, key="agent_q")
+    # Clickable sample chips, grouped by route — each click runs that question.
+    st.markdown('<div class="fs-label">Try a question — each runs only the agents it needs</div>',
+                unsafe_allow_html=True)
+    clicked = None
+    for title, agents, qs in SAMPLE_GROUPS:
+        title = title.replace("{co}", company)
+        st.markdown(
+            f'<div style="margin:8px 0 2px;"><span class="fs-chip" style="background:{c["surface2"]};'
+            f'color:{c["text_dim"]};border-color:{c["border"]};">{title}</span>'
+            f'<span style="color:{c["muted"]};font-size:0.74rem;margin-left:8px;" class="fs-mono">{agents}</span></div>',
+            unsafe_allow_html=True)
+        qs = [q.replace("{co}", company) for q in qs]
+        for i in range(0, len(qs), 2):
+            cols = st.columns(2)
+            for j, q in enumerate(qs[i:i + 2]):
+                if cols[j].button(q, key=f"samp_{title}_{i + j}", use_container_width=True):
+                    clicked = q
 
+    question = st.text_input("Or type your own", key="agent_q", placeholder="Ask about AMD…",
+                             label_visibility="collapsed")
     r1, r2 = st.columns(2)
     run = r1.button("▶ Run agents", type="primary", use_container_width=True)
     if r2.button("↻ New conversation", use_container_width=True):
@@ -112,16 +144,17 @@ def render_agent_demo(company: str) -> None:
         st.session_state.pending_mismatch = None
         st.rerun()
 
-    if run and question.strip():
-        intended = keyword_route(question)
+    to_run = clicked or (question if (run and question.strip()) else None)
+    if to_run:
+        intended = keyword_route(to_run)
         # Use the ticker named in the question if any (so "AMD revenue" runs even when the
         # sidebar shows another company); else fall back to the sidebar company.
-        eff = resolve_ticker(question, Conversation()) or company
+        eff = resolve_ticker(to_run, Conversation()) or company
         if intended in ("numbers", "sentiment") and eff != SAMPLE_TICKER:
-            st.session_state.pending_mismatch = {"q": question, "intended": intended, "company": eff}
+            st.session_state.pending_mismatch = {"q": to_run, "intended": intended, "company": eff}
             st.session_state.agent_result = None
         else:
-            _run(orch, question, ticker=eff)
+            _run(orch, to_run, ticker=eff)
 
     pm = st.session_state.get("pending_mismatch")
     if pm:
