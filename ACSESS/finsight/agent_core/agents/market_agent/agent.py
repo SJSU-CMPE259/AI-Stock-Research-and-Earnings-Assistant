@@ -33,6 +33,7 @@ class MarketAgent(Agent):
             memory.put(
                 "amd_quote",
                 {
+                    "ticker": sym,
                     "price": q.price,
                     "currency": "USD",
                     "as_of": q.as_of,
@@ -55,6 +56,7 @@ class MarketAgent(Agent):
             memory.put(
                 "amd_quote",
                 {
+                    "ticker": sym,
                     "price": quote["price"],
                     "currency": currency,
                     "as_of": quote.get("as_of", datetime.now(timezone.utc).isoformat()),
