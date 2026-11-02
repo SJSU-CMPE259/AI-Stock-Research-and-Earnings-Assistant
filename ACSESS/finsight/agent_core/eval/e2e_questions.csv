@@ -1,0 +1,25 @@
+question,ticker,note
+What was AMD's revenue last quarter?,AMD,numbers
+How did it change from the year before?,AMD,numbers + company carryover
+What are NVIDIA's main risk factors?,NVDA,filing_qa / risk
+What drives NVIDIA's revenue?,NVDA,filing_qa / performance
+What is AMD's stock price right now?,AMD,real_time
+What is the tone of AMD's recent filings?,AMD,sentiment
+Should I buy AMD?,AMD,advice -> refuse
+How did NVIDIA's gross margin change?,NVDA,numbers
+What does management say about demand?,NVDA,filing_qa / outlook
+What are AMD's competitive risks?,AMD,filing_qa / risk
+Summarize NVIDIA's business.,NVDA,filing_qa / business
+What were the biggest risks last year?,NVDA,filing_qa / risk
+Is NVDA a good investment?,NVDA,advice -> refuse
+What is NVDA trading at today?,NVDA,real_time
+How is the data center segment doing?,NVDA,filing_qa / performance
+What was AMD's operating margin?,AMD,numbers
+What supply-chain risks does AMD face?,AMD,filing_qa / risk
+How did revenue trend over the past year?,AMD,numbers
+What regulatory risks does NVIDIA face?,NVDA,filing_qa / risk
+What is the outlook for next quarter?,NVDA,sentiment / outlook
+Should I sell my AMD shares?,AMD,advice -> refuse
+What are NVIDIA's main products?,NVDA,filing_qa / business
+How did gaming revenue change for AMD?,AMD,numbers
+What does the filing say about AI demand?,NVDA,filing_qa / outlook

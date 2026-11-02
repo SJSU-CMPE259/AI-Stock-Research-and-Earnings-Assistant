@@ -1,0 +1,9 @@
+question,ticker,gold_answer_notes,human_supported
+What are NVIDIA's main risk factors?,NVDA,"Should mention competition, demand/customer concentration, supply constraints, and regulatory/export-control risks (Item 1A). No invented numbers.",
+What drives NVIDIA's revenue?,NVDA,"Should attribute growth to the Data Center / AI accelerator platform (Item 7).",
+How did AMD's margins change?,AMD,"Should state gross-margin direction and the product-mix driver (Item 7).",
+What does management say about demand?,NVDA,"Should cite outlook / MD&A statements on demand; no fabricated figures.",
+What are AMD's competitive risks?,AMD,"Should mention intense competition in CPU/GPU markets (Item 1A).",
+What are the supply-chain risks?,NVDA,"Should mention reliance on third-party foundries / supply constraints (Item 1A).",
+Summarize the business.,AMD,"Should summarize products and reportable segments (Item 1).",
+What regulatory risks exist?,NVDA,"Should mention export controls / regulatory risk (Item 1A).",

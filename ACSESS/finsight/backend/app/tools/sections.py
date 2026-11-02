@@ -47,9 +47,17 @@ class FilingParser:
         lines = [line.strip() for line in text.split("\n") if line.strip()]
         return "\n".join(lines)
 
+    # The real body of an Item runs to at least this many characters; shorter
+    # spans are table-of-contents entries, which we skip.
+    MIN_BODY_CHARS = 2000
+
     @classmethod
     def extract_items(cls, filing_html: str, form: str) -> list[Section]:
         """Extract specified Items from a filing.
+
+        An Item name (e.g. "Item 1A. Risk Factors") appears twice: once in the
+        table of contents and once at the real section. We scan every occurrence
+        and keep the one with the most body text, so we never return the ToC stub.
 
         Args:
             filing_html: Raw HTML content
@@ -67,30 +75,28 @@ class FilingParser:
             return sections
 
         for item_name, pattern in patterns.items():
-            # Find the section
-            match = re.search(pattern, text, re.IGNORECASE)
-            if not match:
+            body = cls._best_occurrence(text, pattern)
+            if body is None:
                 logger.warning(f"{form} {item_name} not found")
-                continue
-
-            start = match.start()
-
-            # Find the next Item (or end of text)
-            next_match = re.search(
-                r"\nItem\s+\d", text[start + 1 :], re.IGNORECASE
-            )
-            end = (start + 1 + next_match.start()) if next_match else len(text)
-
-            # Extract section text
-            section_text = text[start:end].strip()
-
-            # Require minimum length
-            if len(section_text) > 40:
-                sections.append(Section(name=item_name, text=section_text))
+            elif len(body) < cls.MIN_BODY_CHARS:
+                logger.warning(
+                    f"{form} {item_name}: only {len(body)} chars (likely ToC only), skipping"
+                )
             else:
-                logger.warning(f"{form} {item_name} text too short, skipping")
+                sections.append(Section(name=item_name, text=body))
 
         return sections
+
+    @staticmethod
+    def _best_occurrence(text: str, pattern: str) -> str | None:
+        """Return the longest Item->next-Item span across all matches of `pattern`."""
+        bodies = []
+        for match in re.finditer(pattern, text, re.IGNORECASE):
+            start = match.start()
+            nxt = re.search(r"\nItem\s+\d", text[match.end():], re.IGNORECASE)
+            end = (match.end() + nxt.start()) if nxt else len(text)
+            bodies.append(text[start:end].strip())
+        return max(bodies, key=len) if bodies else None
 
 
 def parse_filing(filing_html: str, form: str) -> list[Section]:
