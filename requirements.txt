@@ -3,3 +3,5 @@ python-dotenv
 pyyaml
 pandas
 pytest
+qdrant-client>=1.12
+fastembed>=0.4
