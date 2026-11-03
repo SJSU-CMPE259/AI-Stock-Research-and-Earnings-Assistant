@@ -31,15 +31,15 @@ SAMPLE_GROUPS = [
         "What is {co} trading at right now?",
         "What's the latest news on {co} today?",
     ]),
-    ("Revenue & growth · AMD", "Data → Analysis → Viz → Report", [
+    ("Revenue & growth · AMD sample", "Data → Analysis → Viz → Report", [
         "What was AMD's revenue last quarter?",
         "How did AMD's revenue change year over year?",
     ]),
-    ("Filing sentiment · AMD", "Data → Classify → Viz → Report", [
-        "What is the tone of AMD's recent filings?",
+    ("Filing sentiment · {co}", "Data → Classify → Viz → Report  ·  real 10-K", [
+        "What is the tone of {co}'s recent filings?",
     ]),
-    ("Business · AMD", "Data → Report", [
-        "Tell me about AMD's business and products",
+    ("Business · {co}", "Data → Report  ·  real 10-K", [
+        "Tell me about {co}'s business and products",
     ]),
     ("Advice guardrail · {co}", "router refuses", [
         "Should I buy {co}?",
@@ -142,7 +142,9 @@ def render_agent_demo(company: str) -> None:
         # Use the ticker named in the question if any (so "AMD revenue" runs even when the
         # sidebar shows another company); else fall back to the sidebar company.
         eff = resolve_ticker(to_run, Conversation()) or company
-        if intended in ("numbers", "sentiment") and eff != SAMPLE_TICKER:
+        # Only the numbers route needs bundled data (AMD-only, no XBRL yet). Sentiment/text
+        # now fetch the selected company's real SEC filing, so they run for any company.
+        if intended == "numbers" and eff != SAMPLE_TICKER:
             st.session_state.pending_mismatch = {"q": to_run, "intended": intended, "company": eff}
             st.session_state.agent_result = None
         else:
