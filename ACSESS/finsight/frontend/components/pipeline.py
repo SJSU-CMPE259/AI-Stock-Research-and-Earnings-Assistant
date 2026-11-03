@@ -26,7 +26,7 @@ AGENT_ENGINE = {"data_agent": "python", "analysis_agent": "python", "viz_agent":
                 "classify_agent": "mistral", "report_agent": "mistral", "market_agent": "finnhub"}
 
 
-def render_route_card(trace) -> None:
+def render_route_card(trace, use_laya: bool = False) -> None:
     c = COLORS
     laya = trace.route_source == "laya"
     eng_label, eng_color = ENGINE["laya"] if laya else ENGINE["keyword"]
@@ -37,8 +37,16 @@ def render_route_card(trace) -> None:
         bar = (f'<div style="height:6px;background:{c["surface2"]};border-radius:3px;margin-top:6px;'
                f'overflow:hidden;max-width:220px;"><div style="width:{conf_pct}%;height:100%;'
                f'background:{eng_color};"></div></div>')
-    fallback = "" if laya else (f'<span style="color:{c["laya"]};font-size:0.78rem;margin-left:8px;">'
-                                '⚠ Laya unavailable — keyword rules used</span>')
+    # Only warn about a Laya fallback when Laya was actually requested but didn't route;
+    # if the user left Laya off, keyword routing is the chosen mode, not a failure.
+    if laya:
+        fallback = ""
+    elif use_laya:
+        fallback = (f'<span style="color:{c["laya"]};font-size:0.78rem;margin-left:8px;">'
+                    '⚠ Laya unavailable — keyword rules used</span>')
+    else:
+        fallback = (f'<span style="color:{c["muted"]};font-size:0.78rem;margin-left:8px;">'
+                    'keyword routing (turn on Route with Laya for the model router)</span>')
     st.markdown(
         f'<div class="fs-card" style="margin-bottom:12px;">'
         f'<span class="fs-label">Routing</span>{fallback}'

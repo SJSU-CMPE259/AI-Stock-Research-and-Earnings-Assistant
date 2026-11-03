@@ -163,7 +163,7 @@ def render_agent_demo(company: str) -> None:
         return
     tr = res["tr"]
 
-    render_route_card(tr)
+    render_route_card(tr, use_laya=st.session_state.get("use_laya", False))
     render_pipeline(tr)
     if tr.reused:
         st.caption(f"♻ Reused from memory (skipped re-fetch): {', '.join(tr.reused)}")
