@@ -2,7 +2,8 @@
 
     retrieve(question, ticker)          the one call agents need
     get_section(ticker, topic)          a whole section, e.g. latest Risk Factors
-    search(question, ticker, ...)       ranked paragraphs: "hybrid" (default), "dense" or "sparse"
+    search(question, ticker, ...)       ranked paragraphs: "hybrid" (default), "dense", "sparse"
+                                        or "rerank" (hybrid top 30, re-scored by a cross-encoder)
     guess_topics(question)              which sections a question needs
 
 retrieve() works in four steps:
@@ -18,15 +19,18 @@ datastore.api.get_metric (XBRL).
 
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import asdict, dataclass
 
 from finsight.datastore import db
+from finsight.rag.rerank import RERANK_CANDIDATES, get_reranker
 from finsight.rag.store import SEARCH_MODES, Hit, VectorStore, get_store
 
 TOKENS_PER_WORD = 1.35          # English prose, Mistral tokenizer (rough; see eval workbook)
 DEFAULT_BUDGET = 12_000         # evidence tokens per question; fits a 32K local model with room
-DEFAULT_MODE = "hybrid"
+RETRIEVAL_MODES = (*SEARCH_MODES, "rerank")      # the RQ1 arms
+DEFAULT_MODE = os.getenv("FINSIGHT_SEARCH_MODE", "hybrid")   # switch to "rerank" once it measures better
 NARRATIVE_FORMS = ("10-K", "10-Q")
 
 # Question words -> section topics.
@@ -142,17 +146,48 @@ def get_section(ticker: str, topic: str, forms=NARRATIVE_FORMS, n_filings: int =
     return out
 
 
+def _dedupe(hits: list[Evidence]) -> list[Evidence]:
+    """Drop repeated paragraphs (a 10-Q often repeats the last one's risk text word for word).
+    Keeps the best-ranked position, with the newest filing's copy."""
+    out: list[Evidence] = []
+    seen: dict[str, int] = {}
+    for e in hits:
+        key = re.sub(r"[^a-z0-9]+", " ", e.text.lower()).strip()[:400]
+        if key in seen:
+            kept = out[seen[key]]
+            if e.filing_date > kept.filing_date:
+                e.score = kept.score
+                out[seen[key]] = e
+            continue
+        seen[key] = len(out)
+        out.append(e)
+    return out
+
+
 def search(question: str, ticker: str | None = None, topics: list[str] | None = None,
            accessions: list[str] | None = None, k: int = 8, mode: str = DEFAULT_MODE,
-           store: VectorStore | None = None) -> list[Evidence]:
-    """Best-matching paragraphs, best first.
+           store: VectorStore | None = None, dedupe: bool = True) -> list[Evidence]:
+    """Best-matching paragraphs, best first, without repeats.
 
-    mode: "hybrid" (dense + BM25, fused with reciprocal rank fusion), "dense" or "sparse".
+    mode: "hybrid" (dense + BM25, fused with reciprocal rank fusion), "dense", "sparse",
+          or "rerank" (the top RERANK_CANDIDATES hybrid results re-scored by a cross-encoder).
     """
+    if mode not in RETRIEVAL_MODES:
+        raise ValueError(f"mode must be one of {RETRIEVAL_MODES}")
     st = store or get_store()
-    hits: list[Hit] = st.search(question, mode=mode, k=k, ticker=ticker, topics=topics,
+    base = "hybrid" if mode == "rerank" else mode
+    n = max(RERANK_CANDIDATES, k * 3) if mode == "rerank" else (k * 3 if dedupe else k)
+    hits: list[Hit] = st.search(question, mode=base, k=n, ticker=ticker, topics=topics,
                                 accessions=accessions)
-    return [_evidence(h.payload, h.score) for h in hits]
+    ev = [_evidence(h.payload, h.score) for h in hits]
+    if dedupe:
+        ev = _dedupe(ev)
+    if mode == "rerank" and ev:
+        scores = get_reranker().score(question, [f"{e.heading}\n{e.text}" if e.heading else e.text for e in ev])
+        for e, sc in zip(ev, scores):
+            e.score = sc
+        ev.sort(key=lambda e: e.score, reverse=True)
+    return ev[:k]
 
 
 def _pin_short_latest(whole: list[Evidence], max_tokens: int = 1500) -> list[Evidence]:
@@ -192,15 +227,15 @@ def retrieve(question: str, ticker: str, topics: list[str] | None = None,
 
     topics:      from the router; guessed from the question if not given.
     n_filings:   1 = latest filing; 4 = "over the last four quarters".
-    search_mode: "hybrid", "dense" or "sparse" when a search is needed (RQ1 ablation).
+    search_mode: "hybrid", "dense", "sparse" or "rerank" when a search is needed (RQ1 ablation).
     Returns {"mode", "search_mode", "topics", "evidence": [Evidence], "tokens", "truncated"}:
       mode "section"  whole section(s) in reading order ("truncated" if a summary
                       question's section was cut at the budget)
            "search"   best-matching paragraphs, best first
            "none"     no indexed filing of these forms for this ticker
     """
-    if search_mode not in SEARCH_MODES:
-        raise ValueError(f"search_mode must be one of {SEARCH_MODES}")
+    if search_mode not in RETRIEVAL_MODES:
+        raise ValueError(f"search_mode must be one of {RETRIEVAL_MODES}")
     c, st = conn or db.connect(), store or get_store()
     topics = topics if topics is not None else guess_topics(question)
     if topics:

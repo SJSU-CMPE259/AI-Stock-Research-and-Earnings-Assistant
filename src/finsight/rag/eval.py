@@ -1,4 +1,4 @@
-"""Retrieval evaluation for RQ1: sparse (BM25) vs dense (embeddings) vs hybrid.
+"""Retrieval evaluation for RQ1: sparse (BM25) vs dense (embeddings) vs hybrid vs rerank.
 
 A case says which paragraphs are relevant to a question, in one of two ways:
   gold_ids    exact passage_ids (best: label them once in the notebook)
@@ -17,8 +17,8 @@ from __future__ import annotations
 import re
 from statistics import mean
 
-from finsight.rag.retrieve import latest_accessions, search
-from finsight.rag.store import SEARCH_MODES, VectorStore, get_store
+from finsight.rag.retrieve import RETRIEVAL_MODES, latest_accessions, search
+from finsight.rag.store import VectorStore, get_store
 
 
 def _relevant(case: dict, passage_id: str, text: str) -> bool:
@@ -27,16 +27,35 @@ def _relevant(case: dict, passage_id: str, text: str) -> bool:
     return bool(re.search(case["gold_regex"], text, re.IGNORECASE))
 
 
-def evaluate(cases: list[dict], modes=SEARCH_MODES, k: int = 5, conn=None,
+def search_scope(case: dict, conn=None, store: VectorStore | None = None) -> list[str] | None:
+    """Filings to search for one case.
+
+    For each topic: the newest `n_filings` filings that HAVE that section, plus the newest
+    10-K that has it. 10-Q sections are often short updates ("no material changes since the
+    10-K"), and some sections (Business, Cybersecurity) exist only in the 10-K, so searching
+    only the newest 10-Qs would make many correct answers impossible to find.
+    """
+    if case.get("accessions"):
+        return case["accessions"]
+    n = case.get("n_filings")
+    if not n:
+        return None
+    forms = tuple(case.get("forms", ("10-K", "10-Q")))
+    accs: list[str] = []
+    for topic in case.get("topics") or [None]:
+        accs += latest_accessions(case["ticker"], forms, n, topic, conn=conn, store=store)
+        if "10-K" in forms:
+            accs += latest_accessions(case["ticker"], ("10-K",), 1, topic, conn=conn, store=store)
+    return list(dict.fromkeys(accs)) or None
+
+
+def evaluate(cases: list[dict], modes=RETRIEVAL_MODES, k: int = 5, conn=None,
              store: VectorStore | None = None) -> tuple[list[dict], list[dict]]:
     """Run every case through every mode. Returns (per-case rows, per-mode summary)."""
     st = store or get_store()
     rows = []
     for case in cases:
-        accs = case.get("accessions")
-        if accs is None and case.get("n_filings"):
-            accs = latest_accessions(case["ticker"], tuple(case.get("forms", ("10-K", "10-Q"))),
-                                     case["n_filings"], conn=conn, store=st)
+        accs = search_scope(case, conn=conn, store=st)
         for mode in modes:
             hits = search(case["question"], case["ticker"], case.get("topics"), accs,
                           k=k, mode=mode, store=st)

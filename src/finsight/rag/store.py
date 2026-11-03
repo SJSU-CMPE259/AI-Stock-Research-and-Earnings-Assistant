@@ -10,6 +10,13 @@ Where it runs (same code, set by environment):
   (unset)                                     embedded, files in data/qdrant/: dev and notebooks;
                                               one process at a time
   FINSIGHT_QDRANT_API_KEY                     for Qdrant Cloud
+  FINSIGHT_QDRANT_TIMEOUT=60                  seconds per request (uploads over the internet)
+  FINSIGHT_QDRANT_GRPC=1                      gRPC instead of REST: faster bulk uploads
+                                              (server/cloud only; needs port 6334 reachable)
+  FINSIGHT_QDRANT_LOW_MEMORY=1                compressed vectors in RAM, the rest on disk: fits
+                                              ~100 companies in the 1 GB Cloud free tier.
+                                              Applies when the collection is created, so run
+                                              build_rag_index.py --rebuild after turning it on.
 
 Run a server:  docker run -p 6333:6333 -v $(pwd)/data/qdrant_server:/qdrant/storage qdrant/qdrant
 """
@@ -20,9 +27,9 @@ import atexit
 import os
 import uuid
 import warnings
-from dataclasses import dataclass 
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 from pathlib import Path
-from functools import lru_cache
 
 from qdrant_client import QdrantClient, models
 
@@ -32,6 +39,8 @@ from finsight.rag.embeddings import BM25Encoder, DenseEmbedder, get_dense_embedd
 COLLECTION = os.getenv("FINSIGHT_QDRANT_COLLECTION", "finsight_passages")
 SEARCH_MODES = ("sparse", "dense", "hybrid")
 _NS = uuid.UUID("7f2c1a52-58a4-4d5e-9a57-0e1f6b3d2c11")   # passage_id -> stable point id
+EMBED_CHUNK = int(os.getenv("FINSIGHT_EMBED_CHUNK", "2048"))   # paragraphs embedded per call
+LOW_MEMORY = os.getenv("FINSIGHT_QDRANT_LOW_MEMORY", "").lower() in ("1", "true", "yes")
 _INDEXED_FIELDS = {"ticker": "keyword", "form": "keyword", "accession": "keyword",
                    "topic": "keyword", "splitter_version": "integer", "seq": "integer"}
 
@@ -68,12 +77,7 @@ class VectorStore:
                     f"'{self.dense.name}' makes {self.dense.dim}. Rebuild: "
                     f"python scripts/build_rag_index.py --rebuild")
         else:
-            self.client.create_collection(
-                self.collection,
-                vectors_config={"dense": models.VectorParams(size=self.dense.dim,
-                                                             distance=models.Distance.COSINE)},
-                sparse_vectors_config={"bm25": models.SparseVectorParams(modifier=models.Modifier.IDF)},
-            )
+            self.client.create_collection(self.collection, **collection_config(self.dense.dim))
             for field, kind in _INDEXED_FIELDS.items():   # filters stay fast at scale (server mode)
                 try:
                     with warnings.catch_warnings():      # embedded mode ignores them, and says so
@@ -89,19 +93,27 @@ class VectorStore:
         self._ready = False
 
     # ---------- writes ----------
-    def upsert(self, payloads: list[dict], batch: int = 128) -> int:
+    def upsert(self, payloads: list[dict], batch: int = 256) -> int:
         """Embed and store paragraphs. Same passage_id -> same point: re-running replaces it."""
         self.ensure_collection()
-        for i in range(0, len(payloads), batch):
-            chunk = payloads[i:i + batch]
-            texts = [_embed_text(p) for p in chunk]
-            dense = self.dense.embed_documents(texts)
-            sparse = self.sparse.encode_documents(texts)
-            self.client.upsert(self.collection, points=[
-                models.PointStruct(
+        # Embed in big chunks (the model is fastest on large batches), and upload in a
+        # background thread so the CPU/GPU keeps embedding while points go over the network.
+        with ThreadPoolExecutor(max_workers=1) as uploader:
+            pending = []
+            for i in range(0, len(payloads), EMBED_CHUNK):
+                chunk = payloads[i:i + EMBED_CHUNK]
+                texts = [_embed_text(p) for p in chunk]
+                dense = self.dense.embed_documents(texts)
+                sparse = self.sparse.encode_documents(texts)
+                points = [models.PointStruct(
                     id=point_id(p["passage_id"]), payload=p,
                     vector={"dense": d, "bm25": models.SparseVector(indices=s[0], values=s[1])})
-                for p, d, s in zip(chunk, dense, sparse)])
+                    for p, d, s in zip(chunk, dense, sparse)]
+                for j in range(0, len(points), batch):
+                    pending.append(uploader.submit(self.client.upsert, self.collection,
+                                                   points=points[j:j + batch]))
+            for f in pending:
+                f.result()                   # surface any upload error
         return len(payloads)
 
     def delete_filing(self, accession: str) -> None:
@@ -138,6 +150,9 @@ class VectorStore:
         idx, val = self.sparse.encode_query(query)
         sparse = models.Prefetch(query=models.SparseVector(indices=idx, values=val), using="bm25",
                                  filter=flt, limit=max(k * 4, 40))
+        if LOW_MEMORY:   # search the compressed vectors, then re-score the top ones exactly
+            dense.params = models.SearchParams(quantization=models.QuantizationSearchParams(
+                rescore=True, oversampling=2.0))
         if mode == "hybrid":
             res = self.client.query_points(self.collection, prefetch=[dense, sparse],
                                            query=models.FusionQuery(fusion=models.Fusion.RRF),
@@ -147,7 +162,8 @@ class VectorStore:
             if mode == "sparse" and not idx:
                 return []
             res = self.client.query_points(self.collection, query=p.query, using=p.using,
-                                           query_filter=flt, limit=k, with_payload=True)
+                                           query_filter=flt, search_params=p.params,
+                                           limit=k, with_payload=True)
         return [Hit(pt.payload, pt.score) for pt in res.points]
 
 
@@ -174,10 +190,30 @@ def _filter(ticker: str | None = None, topics: list[str] | None = None,
     return models.Filter(must=must) if must else None
 
 
+def collection_config(dim: int, low_memory: bool | None = None) -> dict:
+    """Collection settings. Low-memory keeps an int8 copy of each embedding in RAM (4x smaller)
+    and puts the full vectors, the BM25 index and the paragraph text on disk."""
+    low = LOW_MEMORY if low_memory is None else low_memory
+    cfg = {
+        "vectors_config": {"dense": models.VectorParams(size=dim, distance=models.Distance.COSINE,
+                                                        on_disk=low or None)},
+        "sparse_vectors_config": {"bm25": models.SparseVectorParams(
+            modifier=models.Modifier.IDF,
+            index=models.SparseIndexParams(on_disk=True) if low else None)},
+        "on_disk_payload": True,
+    }
+    if low:
+        cfg["quantization_config"] = models.ScalarQuantization(scalar=models.ScalarQuantizationConfig(
+            type=models.ScalarType.INT8, quantile=0.99, always_ram=True))
+    return cfg
+
+
 def default_client() -> QdrantClient:
     url = os.getenv("FINSIGHT_QDRANT_URL")
     if url:
-        return QdrantClient(url=url, api_key=os.getenv("FINSIGHT_QDRANT_API_KEY"))
+        return QdrantClient(url=url, api_key=os.getenv("FINSIGHT_QDRANT_API_KEY"),
+                            timeout=int(os.getenv("FINSIGHT_QDRANT_TIMEOUT", "60")),
+                            prefer_grpc=os.getenv("FINSIGHT_QDRANT_GRPC", "").lower() in ("1", "true", "yes"))
     path = Path(os.getenv("FINSIGHT_QDRANT_PATH", Path(config.DB_PATH).parent / "qdrant"))
     path.mkdir(parents=True, exist_ok=True)
     client = QdrantClient(path=str(path))
@@ -188,7 +224,6 @@ def default_client() -> QdrantClient:
 _default: VectorStore | None = None
 
 
-@lru_cache(maxsize=1)
 def get_store() -> VectorStore:
     """One shared store per process (the embedding model loads once)."""
     global _default

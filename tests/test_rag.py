@@ -60,7 +60,7 @@ TENQ_HTML = f"""<html><head><style>.x{{}}</style></head><body>
 TENK_HTML = f"""<html><body>
 <div>PART I</div>
 <div>Item 1. Business</div>{P.format("The Company designs, manufactures and markets smartphones, personal computers, tablets, wearables and accessories, and sells a variety of related services. The markets for the Company's products are highly competitive.")}
-<div>Item 1A. Risk Factors</div>{P.format("The Company faces substantial competition and rapid technological change in artificial intelligence features.")}{P.format(LONG)}
+<div>Item 1A. Risk Factors</div>{P.format("The Company faces substantial competition and rapid technological change in artificial intelligence features, and competitors may introduce new products, services and pricing that reduce demand for the Company's devices and services.")}{P.format(LONG)}{P.format("Supply chain disruptions and component shortages " + LONG)}
 <div>Item 7. Management's Discussion and Analysis</div>{P.format("Critical accounting estimates include uncertain tax positions and legal contingencies.")}
 </body></html>"""
 
@@ -80,8 +80,10 @@ class _Conn:
 
 @pytest.fixture
 def store(monkeypatch):
+    import finsight.rag.rerank as rerank_mod
     st = VectorStore(QdrantClient(location=":memory:"), dense=HashEmbedder(), collection="test")
     monkeypatch.setattr(store_mod, "_default", st)      # every get_store() call uses it
+    monkeypatch.setattr(rerank_mod, "_default", rerank_mod.OverlapReranker())   # offline reranker
     return st
 
 
@@ -186,7 +188,8 @@ def test_section_mode_returns_whole_section_in_order(conn):
     index_all(conn)
     r = retrieve("What drove the gross margin change?", "AAPL", topics=["mdna"], conn=conn)
     assert r["mode"] == "section"
-    assert [e.form for e in r["evidence"]] == ["10-Q", "10-Q"]       # latest filing only
+    assert [e.form for e in r["evidence"]] == ["10-Q"]               # latest filing only
+    assert "favorable mix" in r["evidence"][0].text and "mix of services" in r["evidence"][0].text  # short paras merged
     assert "Part I Item 2" in r["evidence"][0].section
     assert r["evidence"][0].fiscal_label == "Q3 FY2026"
 
@@ -236,7 +239,7 @@ def test_evaluate_reports_hit_recall_and_mrr(conn):
              {"id": "epic", "question": "antitrust lawsuit", "ticker": "AAPL",
               "gold_ids": ["0000320193-26-000020/II-1/p000"]}]
     rows, summary = evaluate(cases, k=5)
-    assert len(rows) == 6 and {s["mode"] for s in summary} == {"sparse", "dense", "hybrid"}
+    assert len(rows) == 8 and {s["mode"] for s in summary} == {"sparse", "dense", "hybrid", "rerank"}
     for s in summary:
         assert s["hit@5"] == 1.0 and 0 < s["MRR"] <= 1.0
 
@@ -255,7 +258,7 @@ def test_quiet_10q_over_budget_searches_the_10k_too(conn):
     conn.commit()
     index_all(conn)
     r = retrieve("artificial intelligence competition", "AAPL", topics=["risk_factors"],
-                 budget_tokens=60, conn=conn)
+                 budget_tokens=100, conn=conn)
     assert r["mode"] == "search"
     assert r["evidence"][0].form == "10-Q"                          # direct answer kept first
     assert any("artificial intelligence" in e.text for e in r["evidence"])
@@ -312,3 +315,120 @@ def test_8k_press_release_indexed(conn, monkeypatch, tmp_path):
 def test_pick_ex99():
     assert exhibits.pick_ex99(["a.htm", "ex-99_2.htm", "ex-99_1.htm"]) == "ex-99_1.htm"
     assert exhibits.pick_ex99(["a.htm", "R1.htm"]) is None
+
+
+def test_low_memory_collection_still_searches(conn, monkeypatch):
+    """FINSIGHT_QDRANT_LOW_MEMORY=1: int8 copy in RAM, the rest on disk; results unchanged."""
+    monkeypatch.setattr(store_mod, "LOW_MEMORY", True)
+    st = VectorStore(QdrantClient(location=":memory:"), dense=HashEmbedder(), collection="lowmem")
+    monkeypatch.setattr(store_mod, "_default", st)
+    cfg = store_mod.collection_config(256)
+    assert cfg["quantization_config"] is not None and cfg["vectors_config"]["dense"].on_disk
+    index_all(conn)
+    for mode in ("sparse", "dense", "hybrid"):
+        assert "tariffs" in search("tariffs trade restrictions", "AAPL", topics=["risk_factors"],
+                                   k=3, mode=mode)[0].text
+
+
+def test_index_all_batches_filings_and_reports_progress(conn, store, monkeypatch):
+    import finsight.rag.index as index_mod
+    monkeypatch.setattr(index_mod, "EMBED_CHUNK", 5)          # force several batches
+    calls = []
+    real = store.upsert
+    monkeypatch.setattr(store, "upsert", lambda payloads, **kw: calls.append(len(payloads)) or real(payloads))
+    seen = []
+    res = index_all(conn, progress=lambda r, done, total: seen.append((done, total)))
+    assert sum(calls) == store.count() == sum(r["passages"] for r in res)
+    assert seen[-1] == (2, 2) and all("_payloads" not in r for r in res)
+
+
+def test_skip_topics(conn, store, monkeypatch):
+    import finsight.rag.index as index_mod
+    monkeypatch.setattr(index_mod, "SKIP_TOPICS", {"legal"})
+    index_all(conn)
+    assert store.count(topics=["legal"]) == 0 and store.count(topics=["risk_factors"]) > 0
+
+
+def test_openai_embedder_batches_and_keeps_order(monkeypatch):
+    """No network: a fake OpenAI client. Checks batching, order, dimensions and selection."""
+    import types
+    import finsight.rag.embeddings as emb
+
+    class FakeEmbeddings:
+        def __init__(self):
+            self.calls = []
+
+        def create(self, model, input, dimensions=None):
+            self.calls.append((model, len(input), dimensions))
+            data = [types.SimpleNamespace(index=i, embedding=[float(len(t)), 1.0, 0.0][:3])
+                    for i, t in enumerate(input)]
+            return types.SimpleNamespace(data=list(reversed(data)))   # API may reorder
+
+    fake = FakeEmbeddings()
+    monkeypatch.setitem(__import__("sys").modules, "openai",
+                        types.SimpleNamespace(OpenAI=lambda max_retries: types.SimpleNamespace(embeddings=fake)))
+    monkeypatch.setenv("FINSIGHT_EMBED_DIM", "512")
+    e = emb.get_dense_embedder("openai:text-embedding-3-small")
+    assert isinstance(e, emb.OpenAIEmbedder) and e.name == "openai:text-embedding-3-small@512"
+    texts = [f"paragraph {'x' * i}" for i in range(600)]
+    vecs = e.embed_documents(texts)
+    assert [v[0] for v in vecs] == [float(len(t)) for t in texts]       # order kept
+    sizes = sorted(n for _, n, _ in fake.calls[1:])
+    assert sizes == [88, 256, 256] and all(d == 512 for _, _, d in fake.calls)
+
+
+# ---------- retrieval-quality changes (splitter v3, dedupe, rerank, eval scope) ----------
+
+def test_short_lines_are_merged_not_kept_alone():
+    from finsight.rag.sections import split_paragraphs
+    text = ("Risks Related to Our Industry\n\n"
+            "•Competition could adversely impact our market share and financial results.\n\n"
+            "•Failure to meet the evolving needs of our industry may adversely impact our results.\n\n"
+            "Risks Related to Demand\n\n"
+            "Export controls could limit sales.\n\n" + LONG * 2)
+    ps = [p for p in split_paragraphs(text) if p.kind == "text"]
+    assert all(p.n_words >= 20 for p in ps)
+    assert "Competition" in ps[0].text and "evolving needs" in ps[0].text      # bullet run -> one passage
+    assert ps[1].text.startswith("Export controls could limit sales.")         # short title joins its body
+
+
+def test_dedupe_keeps_one_copy_newest_filing():
+    from finsight.rag.retrieve import Evidence, _dedupe
+    mk = lambda pid, date, text: Evidence(pid, "AAPL", "10-Q", None, date, "s", "risk_factors", "", text, "", 9)
+    hits = [mk("a/1A/p001", "2026-01-30", "Same risk text."), mk("b/1A/p004", "2026-05-01", "Same  risk text!"),
+            mk("a/1A/p002", "2026-01-30", "Different text.")]
+    out = _dedupe(hits)
+    assert [e.passage_id for e in out] == ["b/1A/p004", "a/1A/p002"]
+
+
+def test_rerank_mode_reorders_hybrid_candidates(conn, monkeypatch):
+    import finsight.rag.rerank as rr
+    monkeypatch.setattr(rr, "_default", rr.OverlapReranker())
+    index_all(conn)
+    hits = search("antitrust lawsuit Epic Games", "AAPL", k=3, mode="rerank")
+    assert hits and "Epic Games" in hits[0].text
+    r = retrieve("tariffs trade restrictions", "AAPL", topics=["risk_factors"], budget_tokens=60,
+                 search_mode="rerank", conn=conn)
+    assert r["search_mode"] == "rerank" and r["evidence"]
+
+
+def test_eval_scope_includes_latest_10k(conn):
+    from finsight.rag.eval import search_scope
+    conn.add("0000320193-26-000030", "10-Q", "2026-10-30", QUIET_10Q, 2026, "Q4")
+    conn.commit()
+    index_all(conn)
+    accs = search_scope({"ticker": "AAPL", "topics": ["risk_factors"], "n_filings": 1}, conn=conn)
+    assert "0000320193-26-000030" in accs and "0000320193-25-000079" in accs      # newest 10-Q + newest 10-K
+
+
+def test_query_prefix_only_for_bge_english(monkeypatch):
+    from finsight.rag.embeddings import BGE_QUERY_PREFIX, query_prefix_for
+    monkeypatch.delenv("FINSIGHT_QUERY_PREFIX", raising=False)
+    assert query_prefix_for("BAAI/bge-small-en-v1.5") == BGE_QUERY_PREFIX
+    assert query_prefix_for("openai:text-embedding-3-small") == ""
+    monkeypatch.setenv("FINSIGHT_QUERY_PREFIX", "")
+    assert query_prefix_for("BAAI/bge-small-en-v1.5") == ""
+
+
+def test_bm25_ignores_company_words():
+    assert tokenize("Is the company being sued?") == ["su"]

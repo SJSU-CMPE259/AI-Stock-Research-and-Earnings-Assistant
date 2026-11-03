@@ -19,7 +19,8 @@ Add to `requirements.txt`:
 
 ```
 qdrant-client>=1.12
-fastembed>=0.4
+fastembed>=0.4          # or fastembed-gpu on a CUDA machine
+# openai>=1.0           # only if you use FINSIGHT_EMBED_MODEL=openai:...
 ```
 
 `fastembed` runs the embedding model with ONNX on CPU, with no PyTorch needed. The default model, `BAAI/bge-small-en-v1.5` (384-dim), downloads once, about 70 MB.
@@ -43,6 +44,24 @@ The code is the same in every case. Switching is a matter of setting the URL and
 Other settings:
 - `FINSIGHT_EMBED_MODEL`: any fastembed text model, for example `BAAI/bge-base-en-v1.5`. Use `hash` for CI and tests: no download, but no real meaning either.
 - `FINSIGHT_QDRANT_COLLECTION`: defaults to `finsight_passages`.
+
+## Speed: making embedding faster
+
+Embedding is the slow step: every paragraph (~300 tokens) goes through the model once. Already built in:
+
+- Paragraphs from several filings are embedded together, 2,048 at a time (`FINSIGHT_EMBED_CHUNK`). Big batches are much faster than one 10-Q at a time.
+- On a CPU, big batches are split across all cores (`FINSIGHT_EMBED_PARALLEL=0`, the default; `off` turns it off).
+- Uploads to Qdrant run in the background while the next batch is embedded.
+- Progress prints after each batch, with paragraphs per second.
+
+| Option | How | When |
+|---|---|---|
+| **Index once, share it** | Build on one machine into Qdrant Cloud; teammates only query | Always: only one person waits |
+| **GPU** | `pip install fastembed-gpu` (instead of `fastembed`), `FINSIGHT_EMBED_CUDA=1` | On the PSC GPU machine |
+| **Skip sections** | `FINSIGHT_RAG_SKIP_TOPICS=exhibits,summary`, then `--force` | Item 15 is large. For some companies (e.g. NVIDIA, Oracle) it holds the financial-statement notes, so you lose those |
+| **OpenAI embeddings** | `pip install openai`, `OPENAI_API_KEY=...`, `FINSIGHT_EMBED_MODEL=openai:text-embedding-3-small`, then `--rebuild` | Slow laptop and no GPU. ~$0.02 per 1M tokens; every question then calls OpenAI too |
+
+Only new filings are embedded on later runs. Avoid `--force` and `--rebuild` unless you changed the splitter, the model or the skip list.
 
 ## Build the index
 
@@ -71,11 +90,24 @@ evidence = to_cavm(r["evidence"])     # [{"id": "S1", "text", "citation", ...}] 
 2. Returns them whole if they fit `budget_tokens` (`mode="section"`).
 3. Otherwise searches inside them with `search_mode` and keeps the best paragraphs (`mode="search"`).
 
+## Retrieval quality settings
+
+| Setting | What it does |
+|---|---|
+| `search_mode="rerank"` / `--mode rerank` | Hybrid top 30, re-scored by a cross-encoder (`rerank.py`). Default reranker `Xenova/ms-marco-MiniLM-L-6-v2` (~80 MB); try `FINSIGHT_RERANK_MODEL=BAAI/bge-reranker-base` |
+| `FINSIGHT_SEARCH_MODE=rerank` | Make rerank the default for `retrieve()` once the eval shows it helps |
+| `FINSIGHT_QUERY_PREFIX` | Instruction added to questions for bge models (on by default; `""` turns it off) |
+
+Always on:
+- **No one-line fragments.** Paragraphs under 30 words are merged: a risk factor's title joins its explanation, and a 10-K's risk summary bullets become one passage (splitter v3).
+- **No duplicates.** Search results drop repeated paragraphs, which 10-Qs copy from earlier filings, and keep the newest copy.
+- **BM25 ignores filler words** found in nearly every paragraph ("company", "business", "may"…).
+
 ## RQ1 ablation
 
 ```python
 from finsight.rag.eval import evaluate
-rows, summary = evaluate(cases, k=5)     # hit@5, recall@5, MRR for sparse / dense / hybrid
+rows, summary = evaluate(cases, k=5)     # hit@5, recall@5, MRR for sparse / dense / hybrid / rerank
 ```
 
 Section 7 of `notebooks/rag_walkthrough.ipynb` runs it on 10 generic questions per company. It also helps you turn regex gold into hand-checked `gold_ids`.
