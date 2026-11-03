@@ -20,8 +20,9 @@ import atexit
 import os
 import uuid
 import warnings
-from dataclasses import dataclass
+from dataclasses import dataclass 
 from pathlib import Path
+from functools import lru_cache
 
 from qdrant_client import QdrantClient, models
 
@@ -187,6 +188,7 @@ def default_client() -> QdrantClient:
 _default: VectorStore | None = None
 
 
+@lru_cache(maxsize=1)
 def get_store() -> VectorStore:
     """One shared store per process (the embedding model loads once)."""
     global _default
