@@ -13,7 +13,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-SPLITTER_VERSION = 2   # bump when splitting rules change, so filings get re-indexed
+SPLITTER_VERSION = 3   # bump when splitting rules change, so filings get re-indexed
 
 TENK_TOPICS = {
     "1": "business", "1A": "risk_factors", "1B": "unresolved_staff_comments",
@@ -45,6 +45,8 @@ FOOTER_RE = re.compile(r"^(.{0,80}\|\s*\d{1,3}|\d{1,3}|page \d+( of \d+)?|table 
 
 MAX_WORDS = 300        # longer paragraphs are cut at sentence boundaries
 TARGET_WORDS = 220
+MIN_WORDS = 30         # shorter paragraphs are merged (see split_paragraphs)
+MERGE_INTO_NEXT = 60   # up to this many words of short lines are joined to the next paragraph
 
 
 @dataclass
@@ -164,21 +166,57 @@ def _split_long(text: str) -> list[str]:
 
 
 def split_paragraphs(text: str) -> list[Passage]:
-    """Body text -> passages. Short headings are attached to the paragraph below them."""
+    """Body text -> passages. Short headings are attached to the paragraph below them.
+
+    Very short paragraphs (< MIN_WORDS), such as a risk factor's one-line title or the
+    bullet list that summarises a 10-K's risk factors, are not kept on their own: a few
+    words score high in similarity search but carry little evidence. A short title is
+    joined to the paragraph after it; a run of bullets becomes one passage.
+    """
     out: list[Passage] = []
     heading = ""
+    buf: list[str] = []                       # short paragraphs waiting to be merged
+
+    def emit(t: str, kind: str = "text"):
+        out.append(Passage(len(out), t, heading, kind))
+
+    def flush():
+        if not buf:
+            return
+        chunk: list[str] = []
+        for b in buf:                        # a long bullet run is cut into ~TARGET_WORDS pieces
+            if chunk and sum(len(c.split()) for c in chunk) + len(b.split()) > TARGET_WORDS:
+                emit(" ".join(chunk)); chunk = []
+            chunk.append(b)
+        emit(" ".join(chunk))
+        buf.clear()
+
     for raw in re.split(r"\n\s*\n", text):
         para = re.sub(r"\s+", " ", raw).strip()
         if not para or FOOTER_RE.match(para):
             continue
         if _is_table(para):
-            out.append(Passage(len(out), para, heading, "table"))
+            flush()
+            emit(para, "table")
             continue
         if _is_heading(para):
+            flush()
             heading = para
             continue
-        for piece in _split_long(para):
-            out.append(Passage(len(out), piece, heading, "text"))
+        if len(para.split()) < MIN_WORDS:
+            buf.append(para)
+            if sum(len(b.split()) for b in buf) >= TARGET_WORDS:
+                flush()
+            continue
+        pieces = _split_long(para)
+        if buf and sum(len(b.split()) for b in buf) <= MERGE_INTO_NEXT:
+            pieces[0] = " ".join(buf + [pieces[0]])       # e.g. risk-factor title + its explanation
+            buf.clear()
+        else:
+            flush()
+        for piece in pieces:
+            emit(piece)
+    flush()
     return out
 
 

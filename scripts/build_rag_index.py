@@ -6,7 +6,11 @@
     python scripts/build_rag_index.py --force              # re-embed every filing
     python scripts/build_rag_index.py --rebuild            # drop the collection first (new model)
     python scripts/build_rag_index.py --ask "What does Apple say about tariffs?" --ticker AAPL
-    python scripts/build_rag_index.py --ask "..." --ticker AAPL --mode sparse   # or dense / hybrid
+    python scripts/build_rag_index.py --ask "..." --ticker AAPL --mode sparse   # or dense / hybrid / rerank
+    python scripts/build_rag_index.py --ask "..." --ticker NVDA --search --mode dense -k 5
+        # --search: ranked search only (skips "send the whole section"), to compare modes
+    python scripts/build_rag_index.py --ask "..." --ticker NVDA --forms 10-K --budget 4000
+    python scripts/build_rag_index.py --ask "..." --ticker NVDA --show 0   # print every paragraph
 
 Vector DB location: FINSIGHT_QDRANT_URL (server) or data/qdrant/ (embedded). Embedding
 model: FINSIGHT_EMBED_MODEL (default BAAI/bge-small-en-v1.5). See src/finsight/rag/README.md.
@@ -15,15 +19,15 @@ model: FINSIGHT_EMBED_MODEL (default BAAI/bge-small-en-v1.5). See src/finsight/r
 from __future__ import annotations
 
 import argparse
-import time
 import sys
+import time
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src")) # run from anywhere
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))   # run from anywhere
 
-from finsight.datastore import db
-from finsight.rag import SEARCH_MODES, exhibits, get_store, guess_topics, index_all, retrieve, search
-from finsight.rag.retrieve import DEFAULT_BUDGET, latest_accessions
+from finsight.datastore import db  # noqa: E402
+from finsight.rag import RETRIEVAL_MODES, exhibits, get_store, guess_topics, index_all, retrieve, search  # noqa: E402
+from finsight.rag.retrieve import DEFAULT_BUDGET, latest_accessions  # noqa: E402
 
 
 def main() -> None:
@@ -34,13 +38,14 @@ def main() -> None:
     ap.add_argument("--press-releases", action="store_true")
     ap.add_argument("--ask")
     ap.add_argument("--ticker")
-    ap.add_argument("--mode", choices=SEARCH_MODES, default="hybrid")
+    ap.add_argument("--mode", choices=RETRIEVAL_MODES, default="hybrid")
     ap.add_argument("--filings", type=int, default=1, help="how many recent filings to use")
     ap.add_argument("--forms", nargs="*", default=["10-K", "10-Q"], help="filing types to answer from")
     ap.add_argument("--budget", type=int, default=DEFAULT_BUDGET, help="evidence token budget")
     ap.add_argument("--search", action="store_true",
                     help="ranked search only (skip whole-section mode): use it to compare --mode")
     ap.add_argument("-k", type=int, default=8, help="results to show with --search")
+    ap.add_argument("--show", type=int, default=10, help="paragraphs to print (0 = all)")
     a = ap.parse_args()
     conn, store = db.connect(), get_store()
     print(f"vector DB: {store.collection} · embedder: {store.dense.name} ({store.dense.dim}-dim)")
@@ -68,11 +73,13 @@ def main() -> None:
                   "     search ran: --mode has no effect here. Compare modes with --search, or a\n"
                   "     smaller --budget.")
         print()
-        for i, e in enumerate(r["evidence"][:10], 1):
+        shown = r["evidence"] if a.show == 0 else r["evidence"][:a.show]
+        for i, e in enumerate(shown, 1):
             sc = f" score={e.score:.3f}" if e.score is not None else ""
             print(f"[S{i}]{sc} {e.passage_id.split('/', 1)[1]}  {e.citation()}\n     {e.text[:220]}...\n")
-        if len(r["evidence"]) > 10:
-            print(f"... {len(r['evidence']) - 10} more")
+        if len(r["evidence"]) > len(shown):
+            print(f"... {len(r['evidence']) - len(shown)} more (all are sent to the model; "
+                  f"print them with --show 0)")
         return
 
     if a.rebuild:
