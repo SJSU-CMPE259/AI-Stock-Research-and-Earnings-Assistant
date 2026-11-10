@@ -1,0 +1,13 @@
+# The 10 companies FinSight supports. Replace with your team's list.
+# CIKs and fiscal year ends are looked up from the SEC automatically.
+companies:
+  - NVDA
+  - AAPL
+  - MSFT
+  - AMD
+  - AMZN
+  - GOOGL
+  - META
+  - TSLA
+  - JPM
+  - INTC

@@ -144,3 +144,37 @@ def test_on_step_callback_and_events_backward_compatible():
     # default (no callback) still works and still records events
     tr3 = Orchestrator(FakeLLM()).ask("What is the tone of AMD's filings?")
     assert tr3.events and tr3.answer
+
+
+def test_router_no_false_refusals():
+    """Whole-word advice match: 'buybacks', 'shareholders', 'selling, general...' aren't refused."""
+    for q in ["Tell me about AMD's share buybacks",
+              "Who are AMD's largest shareholders?",
+              "What is selling, general and administrative expense?"]:
+        assert route(q) != "refuse", q
+    # genuine advice is still refused
+    assert route("Should I buy AMD?") == "refuse"
+    assert route("Should I sell NVDA?") == "refuse"
+    assert route("Is AMD a hold?") == "refuse"
+
+
+def test_refusal_text_has_no_sample_tag():
+    from agent_core.orchestrator import REFUSAL
+    assert "(sample data)" not in REFUSAL  # a refusal fetches no data
+
+
+def test_ticker_change_clears_stale_scope():
+    """A new ticker must not reuse the previous ticker's stored filing data."""
+    orch = Orchestrator(FakeLLM(), memory=SharedMemory(), conversation=Conversation())
+    orch.ask("What was AMD's revenue last quarter?")
+    assert orch.memory.has("amd_revenue_quarterly")
+    tr = orch.ask("What was NVDA's revenue last quarter?")  # switch ticker
+    assert "amd_revenue_quarterly" not in tr.reused  # cleared, re-fetched (not reused from AMD)
+
+
+def test_report_label_reflects_fake_engine():
+    """In offline mode the step says 'fake', not 'mistral'."""
+    orch = Orchestrator(FakeLLM(), memory=SharedMemory(), conversation=Conversation())
+    tr = orch.ask("What was AMD's revenue last quarter?")
+    report_step = next(s for s in tr.steps if s.startswith("report_agent"))
+    assert "fake" in report_step and "mistral" not in report_step
