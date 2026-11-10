@@ -127,6 +127,25 @@ def test_report_falls_back_to_template_when_llm_fabricates():
     assert "7.10" in answer  # template uses the real note
 
 
+def test_on_step_callback_and_events_backward_compatible():
+    """ask(on_step=...) fires per step and fills trace.events; default call unchanged."""
+    seen = []
+    orch = Orchestrator(FakeLLM(), memory=SharedMemory(), conversation=Conversation())
+    tr = orch.ask("What was AMD's revenue last quarter?", on_step=lambda e: seen.append(e["agent"]))
+    # router fires first, then the numbers-route agents
+    assert seen and seen[0] == "router"
+    assert "report_agent" in seen
+    # events mirror the callback and carry status + timing
+    assert [e["agent"] for e in tr.events] == seen
+    assert all("status" in e and "ms" in e for e in tr.events)
+    # a callback that raises must never break the run
+    tr2 = orch.ask("What is AMD's revenue?", on_step=lambda e: (_ for _ in ()).throw(ValueError("boom")))
+    assert tr2.answer
+    # default (no callback) still works and still records events
+    tr3 = Orchestrator(FakeLLM()).ask("What is the tone of AMD's filings?")
+    assert tr3.events and tr3.answer
+
+
 def test_router_no_false_refusals():
     """Whole-word advice match: 'buybacks', 'shareholders', 'selling, general...' aren't refused."""
     for q in ["Tell me about AMD's share buybacks",

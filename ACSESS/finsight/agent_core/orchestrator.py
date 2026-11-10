@@ -52,6 +52,8 @@ class Trace:
     elapsed_s: float = 0.0
     route_source: str = "keyword"
     route_confidence: float | None = None
+    # structured, UI-friendly trace: one event per router/agent step
+    events: list[dict] = field(default_factory=list)
 
 
 def resolve_ticker(question: str, conversation: Conversation) -> str | None:
@@ -97,7 +99,9 @@ class Orchestrator:
                 pass  # endpoint down / error -> keyword fallback
         return route(question), "keyword", None
 
-    def ask(self, question: str) -> Trace:
+    def ask(self, question: str, on_step=None) -> Trace:
+        """Route the question and run its agents. `on_step(event)` (optional) is called
+        once per router/agent step for live progress; it never affects the result."""
         start = time.time()
         run_id = f"run-{uuid.uuid4().hex[:8]}"
         prev_ticker = self.conversation.current_ticker
@@ -107,6 +111,8 @@ class Orchestrator:
                       route_source=source, route_confidence=conf)
         conf_txt = f", conf {conf:.2f}" if conf is not None else ""
         trace.steps.append(f"router [{source}]: {r}{conf_txt}")
+        self._emit(trace, on_step, {"agent": "router", "status": "done", "ms": 0.0,
+                                    "route": r, "source": source, "confidence": conf, "wrote": []})
 
         if r == "refuse":
             trace.answer = REFUSAL
@@ -134,20 +140,43 @@ class Orchestrator:
             agent = agent_cls()
 
             if self._reuse_stored_data(agent, trace):
+                self._emit(trace, on_step, {"agent": agent.name, "status": "reused",
+                                            "ms": 0.0, "wrote": list(agent.writes)})
                 continue
             if self._reuse_fresh_quote(agent, trace, ticker):
+                self._emit(trace, on_step, {"agent": agent.name, "status": "reused",
+                                            "ms": 0.0, "wrote": ["amd_quote"]})
                 continue
 
+            t0 = time.time()
             try:
-                trace.steps.append(agent.run(ticker, question, self.memory, self.llm))
+                detail = agent.run(ticker, question, self.memory, self.llm)
+                ms = (time.time() - t0) * 1000
+                trace.steps.append(detail)
+                self._emit(trace, on_step, {"agent": agent.name, "status": "done",
+                                            "ms": round(ms, 1), "wrote": list(agent.writes),
+                                            "detail": detail})
             except Exception as e:
+                ms = (time.time() - t0) * 1000
                 trace.steps.append(f"{agent.name}: FAILED — {e}")
+                self._emit(trace, on_step, {"agent": agent.name, "status": "error",
+                                            "ms": round(ms, 1), "wrote": [], "detail": str(e)})
                 trace.answer = f"Stopped: {agent.name} failed ({e})."
                 return self._finish(trace, start, question)
 
         self._remember_period()
         trace.answer = self.memory.get("answer") or "(no answer written)"
         return self._finish(trace, start, question)
+
+    @staticmethod
+    def _emit(trace: Trace, on_step, event: dict) -> None:
+        """Record a structured event and notify the optional callback (never fatal)."""
+        trace.events.append(event)
+        if on_step is not None:
+            try:
+                on_step(event)
+            except Exception:  # noqa: BLE001 — a UI callback must never break a run
+                pass
 
     def _reuse_stored_data(self, agent, trace: Trace) -> bool:
         """Skip data_agent if its stored outputs are already in memory."""

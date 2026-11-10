@@ -120,6 +120,43 @@ class LLMClient:
         else:
             raise ValueError(f"Unknown provider: {self.provider}")
 
+    def stream(self, system, messages, max_tokens=512, temperature=0.2):
+        """Yield the completion token-by-token for the remote (ollama) provider.
+
+        Backward compatible: a new method; complete() is unchanged. Non-remote providers
+        simply yield the full completion once so callers can treat both the same.
+        """
+        if self.provider != "remote":
+            yield self.complete(system, messages, max_tokens, temperature)
+            return
+        import json as _json
+
+        payload = {
+            "model": self.model,
+            "messages": [{"role": "system", "content": system}] + messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "stream": True,
+        }
+        try:
+            with self.session.post(f"{self.remote_url}/chat/completions", json=payload,
+                                   timeout=120, stream=True) as resp:
+                resp.raise_for_status()
+                for line in resp.iter_lines(decode_unicode=True):
+                    if not line or not line.startswith("data:"):
+                        continue
+                    data = line[5:].strip()
+                    if data == "[DONE]":
+                        break
+                    try:
+                        delta = _json.loads(data)["choices"][0].get("delta", {}).get("content")
+                    except (ValueError, KeyError, IndexError):
+                        continue
+                    if delta:
+                        yield delta
+        except requests.RequestException as e:
+            raise RuntimeError(f"Failed to stream from remote LLM at {self.remote_url}: {e}") from e
+
 
 def get_llm() -> LLMClient:
     """Get or create the LLM client singleton."""
