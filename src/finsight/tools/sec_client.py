@@ -29,6 +29,10 @@ CACHE_DIR = Path(os.getenv("FINSIGHT_CACHE_DIR", "data/cache/sec"))
 CACHE_TTL_SECONDS = 24 * 60 * 60  # refetch after a day so new filings show up
 MIN_INTERVAL = 0.15  # seconds between requests (about 6-7 per second)
 
+# The collection job (datastore/collector.py) lowers this so every run sees fresh
+# filing lists; otherwise a new filing could stay hidden behind the 24-hour cache.
+MAX_JSON_AGE: int | None = None
+
 _last_request = 0.0
 _session = requests.Session()
 
@@ -68,6 +72,8 @@ def _fresh(path: Path, ttl: int) -> bool:
 
 
 def get_json(url: str, ttl: int = CACHE_TTL_SECONDS) -> dict:
+    if MAX_JSON_AGE is not None:
+        ttl = min(ttl, MAX_JSON_AGE)
     path = _cache_path(url, ".json")
     if _fresh(path, ttl):
         return json.loads(path.read_text())

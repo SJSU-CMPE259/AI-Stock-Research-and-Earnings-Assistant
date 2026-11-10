@@ -54,3 +54,19 @@ CREATE TABLE IF NOT EXISTS ingest_log (
     status          TEXT,                      -- ok / error
     error           TEXT
 );
+
+-- "New filing" events from the collection job (D4). The orchestrator reads the
+-- pending ones (processed_at IS NULL), runs analysis / alerts, then marks them done.
+CREATE TABLE IF NOT EXISTS filing_events (
+    id              INTEGER PRIMARY KEY,
+    accession       TEXT NOT NULL UNIQUE REFERENCES filings(accession),
+    ticker          TEXT NOT NULL REFERENCES companies(ticker),
+    event_type      TEXT NOT NULL,             -- annual_report / quarterly_report / earnings_8k / other_8k
+    form            TEXT NOT NULL,
+    filing_date     TEXT NOT NULL,
+    fiscal_year     INTEGER,
+    fiscal_period   TEXT,
+    created_at      TEXT NOT NULL,
+    processed_at    TEXT                       -- NULL = not handled yet
+);
+CREATE INDEX IF NOT EXISTS idx_events_pending ON filing_events(processed_at, created_at);

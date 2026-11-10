@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import re
 import sqlite3
-from datetime import date
+from datetime import date, datetime, timezone
 from html.parser import HTMLParser
 from pathlib import Path
 
@@ -182,3 +182,40 @@ def check_new_filings(since: str | None = None, conn=None) -> list[dict]:
         "SELECT * FROM filings WHERE added_at >= ? ORDER BY filing_date DESC", (since,)
     ).fetchall()
     return [dict(r) for r in rows]
+
+# ---------------------------------------------------------------------------
+# "New filing" events from the collection job (D4)
+# ---------------------------------------------------------------------------
+
+def get_pending_events(limit: int = 50, conn=None) -> list[dict]:
+    """Events not handled yet, oldest first. For the orchestrator / alerts.
+
+    Each event: id, ticker, event_type (annual_report, quarterly_report,
+    earnings_8k, other_8k), form, filing_date, fiscal_label, accession, document_url.
+    """
+    rows = _conn(conn).execute(
+        """SELECT e.*, f.document_url FROM filing_events e
+           JOIN filings f ON f.accession = e.accession
+           WHERE e.processed_at IS NULL ORDER BY e.created_at, e.filing_date LIMIT ?""",
+        (limit,),
+    ).fetchall()
+    out = []
+    for r in rows:
+        d = dict(r)
+        d["fiscal_label"] = (fiscal_label(d["fiscal_year"], d["fiscal_period"])
+                             if d["fiscal_year"] else None)
+        out.append(d)
+    return out
+
+
+def mark_events_processed(event_ids: list[int], conn=None) -> int:
+    """Mark events as handled so they aren't processed twice. Returns how many were updated."""
+    if not event_ids:
+        return 0
+    c = _conn(conn)
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    marks = ",".join("?" * len(event_ids))
+    cur = c.execute(f"UPDATE filing_events SET processed_at=? WHERE processed_at IS NULL "
+                    f"AND id IN ({marks})", (now, *event_ids))
+    c.commit()
+    return cur.rowcount
