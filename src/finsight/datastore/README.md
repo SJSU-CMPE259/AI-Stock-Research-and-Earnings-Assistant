@@ -46,3 +46,34 @@ rd_expense, eps_diluted, cash, total_assets.
 - Concept names differ by company; add overrides in `config/concepts.yaml`
   when `check_quality.py` reports missing metrics.
 - Filing text cleaning is basic; section splitting and 8-K Exhibit 99.1 come in Weeks 6–7.
+
+## Collection job (D4): new filings, automatically
+```
+python scripts/collect.py              # one run: check all companies, store new filings
+python scripts/collect.py --every 30   # keep running, check every 30 minutes (Ctrl+C to stop)
+```
+Each run, per company:
+1. **Cheap check:** one SEC call for the filing list, compared with `filings`. Usually nothing new; done.
+2. **If something is new:** the normal loader stores it, downloads the document, refreshes figures.
+3. **Event:** one row per new 10-K / 10-Q / 8-K in `filing_events`
+   (`annual_report`, `quarterly_report`, `earnings_8k`, `other_8k`).
+
+The first run for a company is a **baseline**: it loads history and raises no events.
+
+### For the orchestrator (P4)
+```python
+from finsight.datastore import api
+for e in api.get_pending_events():
+    ...  # e["ticker"], e["event_type"], e["fiscal_label"], e["document_url"]
+    api.mark_events_processed([e["id"]])
+```
+Mark an event processed only after handling it, so a crash doesn't lose it.
+
+### Running it on a schedule (macOS)
+`crontab -e`, then add (one line, weekdays every 30 min):
+```
+*/30 * * * 1-5 cd "/path/to/AI-Stock-Research-and-Earnings-Assistant" && .venv/bin/python scripts/collect.py >> data/collect.log 2>&1
+```
+The laptop must be awake. If cron can't read `~/Documents`, give `cron` Full Disk Access
+(System Settings → Privacy & Security), or use `--every 30` in a terminal for the demo.
+A lock file (`data/collect.lock`) stops two runs from overlapping.
