@@ -1,0 +1,65 @@
+Console output of exp5_open_models.py on Google Colab (Tesla T4, Ollama), 2026-11-02.
+Copied from the notebook output; the run folder (calc_results.csv, summary.json) was lost
+when the Colab VM was recycled.
+
+Every call stopped at the 4096-token cap (num_predict) while still reasoning, so no call
+produced a real final answer. The "llm=" values are fragments parsed from truncated output.
+This run measures speed / completion, not accuracy.
+
+!python -m agent_core.experiments.exp5_open_models --model deepseek-r1:8b --n 100
+
+Running 100 calc questions through 'deepseek-r1:8b' at http://localhost:11434...
+  [1/100] qoq_pct      py=-9.4384    llm=None x (203543ms, 4096 tok)
+  [2/100] yoy_pct      py=-30.4221   llm=None x (180646ms, 4096 tok)
+  [3/100] gross_margin py=42.6276    llm=None x (178835ms, 4096 tok)
+  [4/100] net_margin   py=12.4907    llm=3.0 x (180940ms, 4096 tok)
+  [5/100] eps          py=3.1278     llm=None x (179804ms, 4096 tok)
+  [6/100] abs_change   py=-11.3      llm=None x (181678ms, 4096 tok)
+  [7/100] avg3         py=17.4533    llm=None x (180463ms, 4096 tok)
+  [8/100] pct_of_total py=17.3808    llm=30.0 x (179351ms, 4096 tok)
+  [9/100] qoq_pct      py=-16.3618   llm=25.0 x (181560ms, 4096 tok)
+  [10/100] yoy_pct      py=-58.4211   llm=1.0 x (181500ms, 4096 tok)
+  [11/100] gross_margin py=90.1427    llm=-7.0 x (180325ms, 4096 tok)
+  [12/100] net_margin   py=19.1727    llm=20.0 x (181211ms, 4096 tok)
+  [13/100] eps          py=1.0041     llm=4.0 x (181105ms, 4096 tok)
+  [14/100] abs_change   py=8.46       llm=20.0 x (181298ms, 4096 tok)
+  [15/100] avg3         py=23.55      llm=19.0 x (180153ms, 4096 tok)
+  [16/100] pct_of_total py=19.637     llm=20.0 x (179695ms, 4096 tok)
+  [17/100] qoq_pct      py=-86.2327   llm=1.0 x (180037ms, 4096 tok)
+  [18/100] yoy_pct      py=-38.62     llm=1.0 x (179678ms, 4096 tok)
+  [19/100] gross_margin py=67.5926    llm=4.0 x (180967ms, 4096 tok)
+  [20/100] net_margin   py=21.7822    llm=9.0 x (182496ms, 4096 tok)
+  [21/100] eps          py=10.8875    llm=7.0 x (182443ms, 4096 tok)
+  [22/100] abs_change   py=15.26      llm=4.0 x (182292ms, 4096 tok)
+  [23/100] avg3         py=11.3067    llm=3.0 x (182013ms, 4096 tok)
+  [24/100] pct_of_total py=44.3783    llm=1.0 x (181518ms, 4096 tok)
+  [25/100] qoq_pct      py=-70.7703   llm=5.0 x (182270ms, 4096 tok)
+  [26/100] yoy_pct      py=43.6082    llm=1.0 x (182092ms, 4096 tok)
+  [27/100] gross_margin py=12.7927    llm=20.0 x (180827ms, 4096 tok)
+  [28/100] net_margin   py=28.4468    llm=32.0 x (178406ms, 4096 tok)
+  [29/100] eps          py=2.6811     llm=1.0 x (181021ms, 4096 tok)
+  [30/100] abs_change   py=11.86      llm=2.0 x (180306ms, 4096 tok)
+  [31/100] avg3         py=17.2667    llm=20.0 x (180162ms, 4096 tok)
+  [32/100] pct_of_total py=50.3471    llm=7.0 x (180869ms, 4096 tok)
+  [33/100] qoq_pct      py=-44.0949   llm=2.0 x (181083ms, 4096 tok)
+  [34/100] yoy_pct      py=-0.8876    llm=2.0 x (180188ms, 4096 tok)
+  [35/100] gross_margin py=66.7178    llm=1.0 x (178765ms, 4096 tok)
+  [36/100] net_margin   py=4.2738     llm=5.0 x (179446ms, 4096 tok)
+  [37/100] eps          py=3.4315     llm=3.0 x (179550ms, 4096 tok)
+  [38/100] abs_change   py=-2.26      llm=2.0 x (180624ms, 4096 tok)
+  [39/100] avg3         py=24.0467    llm=9.0 x (178485ms, 4096 tok)
+  [40/100] pct_of_total py=28.2129    llm=6.0 x (180594ms, 4096 tok)
+  [41/100] qoq_pct      py=154.4239   llm=1.0 x (178777ms, 4096 tok)
+  [42/100] yoy_pct      py=4.7421     llm=1.0 x (181532ms, 4096 tok)
+  [43/100] gross_margin py=95.149     llm=324.0 x (180496ms, 4096 tok)
+  [44/100] net_margin   py=18.366     llm=54.0 x (179096ms, 4096 tok)
+  [45/100] eps          py=2.6847     llm=20.0 x (180817ms, 4096 tok)
+  [46/100] - [100/100]  llm=None x for every question, 167-172 s and 4096 tok each
+                        (full lines identical in shape to the above; abbreviated here)
+
+============ EXPERIMENT 5: deepseek-r1:8b vs Python (100 calcs) ============
+   Python accuracy           : 100%  (exact)
+   model accuracy (all 100)  : 0.0%   (Mistral-7B on PSC was 29% in Exp 2)
+   model accuracy (first 50) : 0.0%   (gpt-5 was 98% on this set)
+   parse rate             : 39%
+   speed                  : 174699 ms / calc, 4096 output tokens
