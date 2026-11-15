@@ -19,7 +19,7 @@ from agent_core.orchestrator import resolve_ticker
 from agent_core.orchestrator import route as keyword_route
 from frontend.charts import revenue_chart, sentiment_chart
 from frontend.companies import SAMPLE_TICKER, short_name
-from frontend.components.answer import render_answer
+from frontend.components.answer import _inline, render_answer
 from frontend.components.pipeline import render_pipeline, render_route_card
 from frontend.components.quote_card import render_quote_card
 from frontend.theme import COLORS
@@ -42,6 +42,7 @@ def _run(orch: Orchestrator, question: str, ticker: str) -> None:
     orch.conversation.current_ticker = ticker
     with st.spinner("Agents working…"):
         tr = orch.ask(question)
+    _archive()
     mem = orch.memory
     st.session_state.agent_result = {
         "tr": tr, "ticker": ticker,
@@ -85,24 +86,29 @@ def render_agent_demo(company: str) -> None:
         _chat(company)
 
 
-def _greeting() -> None:
-    """'Hey there, [name]' -> 'Hey Ravi!' once a name is entered (kept for the session)."""
-    with st.container(horizontal=True, horizontal_alignment="center", vertical_alignment="center"):
-        name = st.session_state.get("greet_name", "")
-        if name:
-            st.markdown(f'<div class="fs-hello">Hey {html.escape(name)}!</div>', unsafe_allow_html=True)
-            return
-        st.markdown('<div class="fs-hello">Hey there,</div>', unsafe_allow_html=True)
-        # copied on change: a widget's own key is dropped once the widget stops rendering
-        st.text_input("Your name", key="greet_input", placeholder="your name", max_chars=24, width=170,
-                      label_visibility="collapsed",
-                      on_change=lambda: st.session_state.update(greet_name=st.session_state.greet_input.strip()))
+def _archive() -> None:
+    """Move the current answer into the on-screen thread (display only; the backend keeps
+    its own last-3 Q&A context for follow-ups)."""
+    prev = st.session_state.get("agent_result")
+    if prev:
+        st.session_state.setdefault("agent_history", []).append(
+            {"q": prev["tr"].question, "answer": prev["tr"].answer})
+    st.session_state.agent_result = None
+
+
+def _submit() -> None:
+    """Ask button / Enter: take the question and clear the box, like a chat app."""
+    st.session_state.to_ask = st.session_state.agent_q.strip()
+    st.session_state.agent_q = ""
 
 
 def _chat(company: str) -> None:
     c = COLORS
     short = short_name(company)
-    _greeting()
+    in_chat = bool(st.session_state.get("agent_result"))
+    if not in_chat:
+        st.markdown('<div class="fs-hello" style="text-align:center;">Hey there 👋</div>',
+                    unsafe_allow_html=True)
     st.markdown(f'<div class="fs-hero">What would you like to know about <span>{short}</span>?</div>'
                 f'<div class="fs-sub">Explore company filings, financial trends, and recent news.</div>',
                 unsafe_allow_html=True)
@@ -125,12 +131,10 @@ def _chat(company: str) -> None:
 
     cols = st.columns([6, 1], vertical_alignment="center")
     # on_change fires on Enter, so Enter asks just like the button
-    question = cols[0].text_input("Ask a question", key="agent_q", label_visibility="collapsed",
-                                  placeholder=f"Ask about {short}…",
-                                  on_change=lambda: st.session_state.update(agent_enter=True))
-    run = cols[1].button("Ask", type="primary", use_container_width=True, key="ask_btn") \
-        or st.session_state.pop("agent_enter", False)
-    clicked = None
+    cols[0].text_input("Ask a question", key="agent_q", label_visibility="collapsed",
+                       placeholder=f"Ask a follow-up about {short}…" if in_chat else f"Ask about {short}…",
+                       on_change=_submit)
+    cols[1].button("Ask", type="primary", use_container_width=True, key="ask_btn", on_click=_submit)
 
     # chips fill the box (as in the mockup); the callback clears the pill so it can be reused
     def _fill():
@@ -141,7 +145,7 @@ def _chat(company: str) -> None:
         st.pills("Try a question", list(CHIPS), key="agent_chips", on_change=_fill,
                  label_visibility="collapsed")
 
-    to_run = clicked or (question if (run and question.strip()) else None)
+    to_run = st.session_state.pop("to_ask", "")
     if to_run:
         intended = keyword_route(to_run)
         # Use the ticker named in the question if any (so "AMD revenue" runs even when the
@@ -151,7 +155,7 @@ def _chat(company: str) -> None:
         # now fetch the selected company's real SEC filing, so they run for any company.
         if intended == "numbers" and eff != SAMPLE_TICKER:
             st.session_state.pending_mismatch = {"q": to_run, "intended": intended, "company": eff}
-            st.session_state.agent_result = None
+            _archive()
         else:
             _run(orch, to_run, ticker=eff)
 
@@ -174,7 +178,7 @@ def _chat(company: str) -> None:
     orch = st.session_state.agent_orch  # _run may have swapped in a fresh one
     src = "sample data (AMD)" if res["ticker"] == SAMPLE_TICKER else f"from {short_name(res['ticker'])}'s latest 10-K"
 
-    st.markdown('<div class="fs-label" style="margin-top:18px;">Answer</div>', unsafe_allow_html=True)
+    _question_bubble(tr.question)
     render_answer(tr, orch.memory)
 
     if tr.route == "real_time":
@@ -214,10 +218,25 @@ def _chat(company: str) -> None:
     # below the answer, where people look for it; a click handler may clear the box above
     st.button("↻ New chat", key="new_chat", on_click=_new_chat)
 
+    # earlier turns, newest first, under the latest answer (so the new one is never off-screen)
+    history = st.session_state.get("agent_history") or []
+    if history:
+        st.markdown('<div class="fs-label" style="margin-top:22px;">Earlier in this chat</div>',
+                    unsafe_allow_html=True)
+        for turn in reversed(history):
+            _question_bubble(turn["q"])
+            st.markdown(f'<div class="fs-card" style="padding:12px 16px;color:{c["text_dim"]};">'
+                        f'{_inline(turn["answer"])}</div>', unsafe_allow_html=True)
+
+
+def _question_bubble(q: str) -> None:
+    st.markdown(f'<div class="fs-q"><span>{html.escape(q)}</span></div>', unsafe_allow_html=True)
+
 
 def _new_chat() -> None:
     st.session_state.agent_orch = _fresh(st.session_state.agent_fake, st.session_state.agent_laya)
     st.session_state.agent_result = None
+    st.session_state.agent_history = []
     st.session_state.pending_mismatch = None
     st.session_state.agent_q = ""
 

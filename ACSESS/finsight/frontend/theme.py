@@ -136,6 +136,10 @@ def apply_theme() -> None:
         .fs-hero {{ text-align: center; font-size: clamp(1.6rem, 3.2vw, 2.3rem); font-weight: 800;
             letter-spacing: -0.02em; line-height: 1.2; margin: 6px 0 4px; }}
         .fs-hero span {{ color: {c['laya']}; }}
+        /* chat thread: the user's question as a right-aligned bubble */
+        .fs-q {{ display:flex; justify-content:flex-end; margin:18px 0 8px; }}
+        .fs-q span {{ background:{c['surface2']}; border:1px solid {c['border']}; border-radius:14px 14px 4px 14px;
+            padding:8px 14px; max-width:80%; color:{c['text']}; }}
         .fs-sub {{ text-align: center; color: {c['muted']}; font-size: 0.95rem; margin: 0 0 16px; }}
         .fs-label {{ font-size:0.7rem; letter-spacing:0.08em; text-transform:uppercase;
             color:{c['muted']}; font-weight:700; }}
