@@ -66,9 +66,9 @@ def _run(orch: Orchestrator, question: str, ticker: str) -> None:
     mem = orch.memory
     st.session_state.agent_result = {
         "tr": tr, "ticker": ticker,
-        "quote": mem.get("amd_quote"), "news": mem.get("amd_news"),
-        "chart": mem.get("amd_chart"), "schart": mem.get("amd_sentiment_chart"),
-        "notes": mem.get("amd_notes"), "sentiment": mem.get("amd_sentiment"),
+        "quote": mem.get("quote"), "news": mem.get("news"),
+        "chart": mem.get("chart"), "schart": mem.get("sentiment_chart"),
+        "notes": mem.get("notes"), "sentiment": mem.get("sentiment"),
         "memtext": mem.describe() or "(empty)",
     }
 

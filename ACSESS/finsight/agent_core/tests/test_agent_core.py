@@ -34,22 +34,22 @@ def test_refusal_runs_no_agents_and_no_llm():
 
 def test_memory_put_get_list():
     m = SharedMemory()
-    m.put("amd_notes", {"a": 1}, "analysis_agent", description="d")
-    assert m.get("amd_notes") == {"a": 1}
-    assert m.has("amd_notes")
-    assert "amd_notes" in m.list()
-    assert "amd_notes" in m.describe()
+    m.put("notes", {"a": 1}, "analysis_agent", description="d")
+    assert m.get("notes") == {"a": 1}
+    assert m.has("notes")
+    assert "notes" in m.list()
+    assert "notes" in m.describe()
 
 
 def test_memory_save(tmp_path):
     m = SharedMemory()
-    m.put("amd_quote", {"price": 1.0}, "market_agent", freshness="real_time")
+    m.put("quote", {"price": 1.0}, "market_agent", freshness="real_time")
     path = tmp_path / "mem.json"
     m.save(path)
     data = json.loads(path.read_text())
-    assert data["amd_quote"]["value"] == {"price": 1.0}
-    assert data["amd_quote"]["written_by"] == "market_agent"
-    assert data["amd_quote"]["freshness"] == "real_time"
+    assert data["quote"]["value"] == {"price": 1.0}
+    assert data["quote"]["written_by"] == "market_agent"
+    assert data["quote"]["freshness"] == "real_time"
 
 
 # ---- conversation: ticker remembered + stored reuse on Q2 -----------------
@@ -61,7 +61,7 @@ def test_ticker_remembered_and_stored_data_reused_on_q2():
 
     t2 = orch.ask("How did it change from the year before?")  # no ticker named
     assert t2.ticker == "AMD"  # remembered from Q1
-    assert "amd_revenue_quarterly" in t2.reused  # data_agent skipped, data reused
+    assert "revenue_quarterly" in t2.reused  # data_agent skipped, data reused
 
 
 # ---- real_time quote expires after 60s ------------------------------------
@@ -71,14 +71,14 @@ def test_quote_reused_while_fresh_then_expires():
     orch = Orchestrator(FakeLLM(), memory=mem, conversation=Conversation())
 
     orch.ask("What is AMD's stock price right now?")
-    assert mem.has("amd_quote")
+    assert mem.has("quote")
 
     fresh = orch.ask("AMD price today?")
-    assert "amd_quote" in fresh.reused  # < 60s -> reused
+    assert "quote" in fresh.reused  # < 60s -> reused
 
-    mem.item("amd_quote").created_at -= 61  # age it past the TTL
+    mem.item("quote").created_at -= 61  # age it past the TTL
     expired = orch.ask("AMD current price?")
-    assert "amd_quote" not in expired.reused  # re-fetched
+    assert "quote" not in expired.reused  # re-fetched
 
 
 def test_fresh_quote_not_reused_across_tickers():
@@ -87,11 +87,11 @@ def test_fresh_quote_not_reused_across_tickers():
     orch = Orchestrator(FakeLLM(), memory=mem, conversation=Conversation())
 
     orch.ask("What is AMD's stock price right now?")
-    assert mem.get("amd_quote")["ticker"] == "AMD"
+    assert mem.get("quote")["ticker"] == "AMD"
 
     nvda = orch.ask("What is NVDA's stock price right now?")  # within TTL, different ticker
-    assert "amd_quote" not in nvda.reused  # re-fetched, not reused
-    assert mem.get("amd_quote")["ticker"] == "NVDA"
+    assert "quote" not in nvda.reused  # re-fetched, not reused
+    assert mem.get("quote")["ticker"] == "NVDA"
 
 
 # ---- report check: fake IDs and fabricated numbers ------------------------
@@ -114,7 +114,7 @@ def test_report_check_accepts_valid_combined_citation():
 def test_report_falls_back_to_template_when_llm_fabricates():
     mem = SharedMemory()
     mem.put(
-        "amd_notes",
+        "notes",
         [{"id": "N1", "text": "Revenue FY2025 Q2: $7.10B.", "values": {"value_usd": 7100000000}, "source": {}}],
         "analysis_agent",
     )
@@ -167,9 +167,9 @@ def test_ticker_change_clears_stale_scope():
     """A new ticker must not reuse the previous ticker's stored filing data."""
     orch = Orchestrator(FakeLLM(), memory=SharedMemory(), conversation=Conversation())
     orch.ask("What was AMD's revenue last quarter?")
-    assert orch.memory.has("amd_revenue_quarterly")
+    assert orch.memory.has("revenue_quarterly")
     tr = orch.ask("What was NVDA's revenue last quarter?")  # switch ticker
-    assert "amd_revenue_quarterly" not in tr.reused  # cleared, re-fetched (not reused from AMD)
+    assert "revenue_quarterly" not in tr.reused  # cleared, re-fetched (not reused from AMD)
 
 
 def test_report_label_reflects_fake_engine():

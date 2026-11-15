@@ -69,31 +69,31 @@ class ReportAgent(Agent):
         lines: list[str] = []
         blob: list[str] = []
 
-        if memory.has("amd_notes"):
-            for n in memory.get("amd_notes"):
+        if memory.has("notes"):
+            for n in memory.get("notes"):
                 facts.append((n["id"], n["text"]))
                 lines.append(f"[{n['id']}] {n['text']}")
                 blob.append(f"{n['text']} {n.get('values', '')}")
-        if memory.has("amd_sentiment"):
-            s = memory.get("amd_sentiment")
+        if memory.has("sentiment"):
+            s = memory.get("sentiment")
             if isinstance(s, dict) and s.get("summary"):
                 facts.append(("S1", s["summary"]))
                 lines.append(f"[S1] {s['summary']}")
                 blob.append(s["summary"])
-        if memory.has("amd_passages"):
-            for i, p in enumerate(_select_passages(memory.get("amd_passages"), question), 1):
+        if memory.has("passages"):
+            for i, p in enumerate(_select_passages(memory.get("passages"), question), 1):
                 facts.append((f"P{i}", p["text"]))
                 lines.append(f"[P{i}] {p['text']}")
                 blob.append(p["text"])
-        if memory.has("amd_quote"):
-            q = memory.get("amd_quote")
+        if memory.has("quote"):
+            q = memory.get("quote")
             if isinstance(q, dict) and "price" in q:
                 txt = f"Current price: {q['price']} {q.get('currency', 'USD')} as of {q.get('as_of', '')}"
                 facts.append(("Q1", txt))
                 lines.append(f"[Q1] {txt}")
                 blob.append(txt)
-        if memory.has("amd_news"):
-            for i, a in enumerate(memory.get("amd_news"), 1):
+        if memory.has("news"):
+            for i, a in enumerate(memory.get("news"), 1):
                 txt = f"{a['source']}, {a['date']}: {a['headline']}"
                 facts.append((f"H{i}", txt))
                 lines.append(f"[H{i}] {txt}")
@@ -105,8 +105,8 @@ class ReportAgent(Agent):
     @staticmethod
     def _source_tag(memory: SharedMemory) -> str:
         """Label the data provenance: live Finnhub quote/news vs sample fixtures."""
-        q = memory.get("amd_quote") if memory.has("amd_quote") else None
-        if (isinstance(q, dict) and q.get("live")) or memory.has("amd_news"):
+        q = memory.get("quote") if memory.has("quote") else None
+        if (isinstance(q, dict) and q.get("live")) or memory.has("news"):
             return "(live: Finnhub)"
         return "(sample data)"
 

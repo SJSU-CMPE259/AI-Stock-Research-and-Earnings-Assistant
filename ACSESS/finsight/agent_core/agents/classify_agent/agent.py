@@ -1,7 +1,7 @@
 """Classify agent: label each filing passage positive / neutral / negative with Mistral.
 
 Mistral is asked for exactly one word. Anything off-vocabulary is stored as
-'uncertain' with needs_review=True. Writes amd_sentiment: per-passage labels, counts
+'uncertain' with needs_review=True. Writes sentiment: per-passage labels, counts
 (always with n), and a short summary the report agent can cite as [S1].
 """
 from __future__ import annotations
@@ -29,12 +29,12 @@ def _parse_label(reply: str) -> tuple[str, bool]:
 
 class ClassifyAgent(Agent):
     name = "classify_agent"
-    reads = ["amd_passages"]
-    writes = ["amd_sentiment"]
+    reads = ["passages"]
+    writes = ["sentiment"]
 
     def run(self, ticker: str, question: str, memory: SharedMemory, llm) -> str:
         self.check_inputs(memory)
-        passages = memory.get("amd_passages")
+        passages = memory.get("passages")
 
         labels: list[dict] = []
         counts = {"positive": 0, "neutral": 0, "negative": 0, "uncertain": 0}
@@ -66,10 +66,10 @@ class ClassifyAgent(Agent):
         )
 
         memory.put(
-            "amd_sentiment",
+            "sentiment",
             {"labels": labels, "counts": counts, "n": n, "summary": summary},
             self.name,
             sources=[p["source"] for p in passages],
             description=summary,
         )
-        return f"{self.name}: read amd_passages -> wrote amd_sentiment ({counts[top]} of {n} {top})"
+        return f"{self.name}: read passages -> wrote sentiment ({counts[top]} of {n} {top})"

@@ -100,7 +100,7 @@ def fetch_revenue_quarterly(ticker: str, limit: int = 6) -> tuple:
 class DataAgent(Agent):
     name = "data_agent"
     reads: list[str] = []
-    writes = ["amd_revenue_quarterly", "amd_passages"]
+    writes = ["revenue_quarterly", "passages"]
 
     def run(self, ticker: str, question: str, memory: SharedMemory, llm) -> str:
         tk = (ticker or SAMPLE_TICKER).upper()
@@ -110,22 +110,22 @@ class DataAgent(Agent):
         revenue, rev_src = self._revenue(tk, offline)
         if revenue:
             memory.put(
-                "amd_revenue_quarterly", list(revenue), self.name,
+                "revenue_quarterly", list(revenue), self.name,
                 sources=[e["source"] for e in revenue], freshness="stored",
                 description=f"{len(revenue)} quarters of revenue for {tk} ({rev_src})",
             )
-            wrote.append(f"amd_revenue_quarterly ({len(revenue)}q, {rev_src})")
+            wrote.append(f"revenue_quarterly ({len(revenue)}q, {rev_src})")
 
         if tk == SAMPLE_TICKER and (offline or revenue is None or rev_src == "sample"):
             passages = load_company_data()["passages"]
         else:
             passages = list(load_filing_passages(tk))
         memory.put(
-            "amd_passages", passages, self.name,
+            "passages", passages, self.name,
             sources=[p["source"] for p in passages], freshness="stored",
             description=f"{len(passages)} filing passages for {tk}",
         )
-        wrote.append(f"amd_passages ({len(passages)})")
+        wrote.append(f"passages ({len(passages)})")
         return f"{self.name}: {tk} -> wrote {', '.join(wrote)}"
 
     @staticmethod
