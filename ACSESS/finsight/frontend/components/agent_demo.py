@@ -6,6 +6,8 @@ a clear notice and a "Use AMD sample" button — never a silent switch.
 """
 from __future__ import annotations
 
+import re
+
 import streamlit as st
 
 from agent_core.llm import FakeLLM, MistralLLM
@@ -57,6 +59,11 @@ def _fresh(use_fake: bool, use_laya: bool) -> Orchestrator:
 
 
 def _run(orch: Orchestrator, question: str, ticker: str) -> None:
+    # Memory items aren't keyed by company, so a new company gets a fresh memory;
+    # otherwise its answer reuses the previous company's data (the GOOGL → AMD bug).
+    if st.session_state.get("agent_ticker") not in (None, ticker):
+        orch = st.session_state.agent_orch = _fresh(st.session_state.agent_fake, st.session_state.agent_laya)
+    st.session_state.agent_ticker = ticker
     orch.conversation.current_ticker = ticker
     with st.spinner("Agents working…"):
         tr = orch.ask(question)
@@ -90,16 +97,18 @@ def _context_chips(orch: Orchestrator) -> None:
 
 def render_agent_demo(company: str) -> None:
     c = COLORS
-    st.markdown('<div style="font-size:1.5rem;font-weight:800;">Agent Demo</div>'
-                f'<div style="color:{c["muted"]};font-size:0.9rem;margin-bottom:10px;">'
-                'Laya routes the question, only that route\'s agents run over one shared memory, '
-                'and Mistral writes the cited answer.</div>', unsafe_allow_html=True)
+    st.markdown('<div style="font-size:2.3rem;font-weight:800;margin-top:10px;letter-spacing:-0.02em;">'
+                f'<span style="color:{c["text"]};">Ask Fin</span><span style="color:{c["laya"]};">Sight</span></div>'
+                f'<div style="color:{c["text_dim"]};font-size:1rem;margin-bottom:14px;">'
+                f'Ask about {company_name(company)} in plain English. Every number is computed in '
+                'Python and every claim is cited to its source.</div>', unsafe_allow_html=True)
 
-    col_a, col_b = st.columns(2)
-    use_fake = col_a.toggle("Offline (FakeLLM)", value=False, key="use_fake",
-                            help="Off = real Mistral on the PSC GPU (needs the :8000 tunnel).")
-    use_laya = col_b.toggle("Route with Laya", value=False, key="use_laya",
-                            help="Use Laya to route (needs the :8001 tunnel); else keyword rules.")
+    # engine switches are for developers, so they live in the sidebar
+    with st.sidebar.expander("Developer settings"):
+        use_fake = st.toggle("Offline (FakeLLM)", value=False, key="use_fake",
+                             help="Off = real Mistral on the PSC GPU (needs the :8000 tunnel).")
+        use_laya = st.toggle("Route with Laya", value=False, key="use_laya",
+                             help="Use Laya to route (needs the :8001 tunnel); else keyword rules.")
 
     # rebuild the orchestrator when the engine toggles change (preserves memory otherwise)
     if ("agent_orch" not in st.session_state
@@ -110,27 +119,23 @@ def render_agent_demo(company: str) -> None:
         st.session_state.agent_laya = use_laya
     orch = st.session_state.agent_orch
 
-    _context_chips(orch)
 
-    # Type-your-own first; sample questions tucked in an expander to keep the view clean.
-    question = st.text_input("Ask a question", key="agent_q",
-                             placeholder="Ask about AMD, or pick a sample below…")
+    # Search-style box with the action beside it; one sample per route as quick chips.
+    qcol, acol, ncol = st.columns([6, 1, 1.4], vertical_alignment="bottom")
+    # on_change fires on Enter, so Enter asks just like the button
+    question = qcol.text_input("Ask a question", key="agent_q", label_visibility="collapsed",
+                               placeholder=f"e.g. What is the tone of {company}'s recent filings?",
+                               on_change=lambda: st.session_state.update(agent_enter=True))
+    run = acol.button("Ask", type="primary", use_container_width=True, key="ask_btn") or st.session_state.pop("agent_enter", False)
     clicked = None
-    with st.expander("💡 Sample questions — click one to run", expanded=True):
-        for title, agents, qs in SAMPLE_GROUPS:
-            title = title.replace("{co}", company)
-            st.markdown(
-                f'<div style="margin:10px 0 4px;"><b style="font-size:0.9rem;">{title}</b>'
-                f'<span style="color:{c["muted"]};font-size:0.72rem;margin-left:10px;" class="fs-mono">'
-                f'{agents}</span></div>',
-                unsafe_allow_html=True)
-            cols = st.columns(len(qs)) if len(qs) > 1 else [st]
-            for j, q in enumerate([x.replace("{co}", company) for x in qs]):
-                if cols[j].button(q, key=f"samp_{title}_{j}", use_container_width=True):
-                    clicked = q
-    r1, r2 = st.columns(2)
-    run = r1.button("▶ Run agents", type="primary", use_container_width=True)
-    if r2.button("↻ New conversation", use_container_width=True):
+    samples = [qs[0].replace("{co}", company) for _, _, qs in SAMPLE_GROUPS]
+    # pills wrap to the screen width; the callback clears the selection so a chip acts like a button
+    def _pick():
+        st.session_state.agent_chip_q = st.session_state.agent_chips
+        st.session_state.agent_chips = None
+    st.pills("Try one:", samples, key="agent_chips", on_change=_pick)
+    clicked = st.session_state.pop("agent_chip_q", None)
+    if ncol.button("↻ New chat", use_container_width=True, key="new_chat"):
         st.session_state.agent_orch = _fresh(use_fake, use_laya)
         st.session_state.agent_result = None
         st.session_state.pending_mismatch = None
@@ -158,17 +163,20 @@ def render_agent_demo(company: str) -> None:
             f"Switch the sidebar company to {SAMPLE_TICKER}, or use the sample below."
         )
         if st.button(f"Use {SAMPLE_TICKER} sample data", type="primary"):
-            _run(orch, pm["q"], ticker=SAMPLE_TICKER)
+            # the question names the other ticker, which would override the AMD choice
+            q = re.sub(rf"\b{re.escape(pm['company'])}\b", SAMPLE_TICKER, pm["q"], flags=re.I)
+            _run(orch, q, ticker=SAMPLE_TICKER)
+            st.rerun()  # redraw without the warning, which was drawn before the click
 
     res = st.session_state.get("agent_result")
     if not res:
         return
     tr = res["tr"]
+    orch = st.session_state.agent_orch  # _run may have swapped in a fresh one
+    src = "AMD SAMPLE DATA" if res["ticker"] == SAMPLE_TICKER else f"{res['ticker']} · LATEST 10-K"
 
-    render_route_card(tr, use_laya=st.session_state.get("use_laya", False))
-    render_pipeline(tr)
-    if tr.reused:
-        st.caption(f"♻ Reused from memory (skipped re-fetch): {', '.join(tr.reused)}")
+    st.markdown('<div class="fs-label" style="margin-top:18px;">Answer</div>', unsafe_allow_html=True)
+    render_answer(tr, orch.memory)
 
     if tr.route == "real_time":
         q = res["quote"]
@@ -177,13 +185,10 @@ def render_agent_demo(company: str) -> None:
         if res["news"]:
             _render_news(res["news"])
 
-    st.markdown('<div class="fs-label" style="margin-top:14px;">Answer</div>', unsafe_allow_html=True)
-    render_answer(tr, orch.memory)
-
     chart = res["chart"]
     if tr.route == "numbers" and chart and chart.get("points"):
         st.markdown('<div class="fs-label" style="margin-top:14px;">Revenue · viz_agent '
-                    '<span style="color:#71869B;">· SAMPLE DATA</span></div>', unsafe_allow_html=True)
+                    f'<span style="color:{c["muted"]};">· {src}</span></div>', unsafe_allow_html=True)
         _delta_chips(res.get("notes"))
         st.altair_chart(revenue_chart(chart["points"], chart.get("note", "")), use_container_width=True)
         st.caption("Deltas computed in Python from the quarterly figures (analysis_agent) · not financial advice.")
@@ -192,11 +197,19 @@ def render_agent_demo(company: str) -> None:
     schart = res["schart"]
     if tr.route == "sentiment" and schart and schart.get("points"):
         st.markdown('<div class="fs-label" style="margin-top:14px;">Filing sentiment · classify_agent '
-                    '<span style="color:#71869B;">· SAMPLE DATA</span></div>', unsafe_allow_html=True)
+                    f'<span style="color:{c["muted"]};">· {src}</span></div>', unsafe_allow_html=True)
         st.altair_chart(sentiment_chart(schart["points"]), use_container_width=True)
         _sentiment_detail(sent)
 
-    with st.expander("Shared memory after this question"):
+    # explainability: how the answer was made, one click away instead of in the way
+    with st.expander("🔍 How FinSight answered this: route, agents and memory"):
+        _context_chips(orch)
+        render_route_card(tr, use_laya=st.session_state.get("use_laya", False))
+        render_pipeline(tr)
+        if tr.reused:
+            st.caption(f"♻ Reused from memory (skipped re-fetch): {', '.join(tr.reused)}")
+        st.markdown('<div class="fs-label" style="margin-top:10px;">Shared memory after this question</div>',
+                    unsafe_allow_html=True)
         st.code(res["memtext"])
 
 

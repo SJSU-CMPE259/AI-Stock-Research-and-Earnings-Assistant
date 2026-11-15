@@ -26,7 +26,8 @@ def render_how_it_works() -> None:
                 unsafe_allow_html=True)
     rows = [
         ("Routing", "Laya 0.85 vs Mistral 0.52 (McNemar p=0.0003); hybrid 0.88 overall", "EXPERIMENT1"),
-        ("Math: Python vs LLM", "Python 100% vs Mistral 29% on 100 calcs; gpt-5 98%", "EXPERIMENT2/4"),
+        ("Math: Python vs LLM", "Python 100% vs Mistral 29% on 100 calcs; Ministral 3 8B 72%; gpt-5 98%",
+         "EXPERIMENT2/4/5"),
         ("Live data vs model memory", "Price error 210% without live data → 0.00% with Finnhub", "EXPERIMENT2"),
         ("Laya as router", "100% correct routing (price→real_time, calc→numbers)", "EXPERIMENT3"),
     ]

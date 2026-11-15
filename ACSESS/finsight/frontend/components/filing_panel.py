@@ -61,6 +61,8 @@ def _error_hint(e: Exception) -> str:
         return "SEC requires a User-Agent. Set SEC_USER_AGENT in .env (e.g. 'Name email')."
     if "429" in msg or "rate" in msg.lower():
         return "SEC rate-limited the request. Wait a few seconds and try again."
+    if "Connection" in msg or "remote LLM" in msg:
+        return "the writing model (Mistral) isn't reachable. Start the GPU tunnel on :8000 and try again."
     return msg
 
 
@@ -149,7 +151,7 @@ def render_filing_qa(company: str, form_type: str) -> None:
                 'Fetch the latest filing from SEC EDGAR, browse its sections, and ask — answers cite '
                 '[F] sections.</div>', unsafe_allow_html=True)
 
-    if st.button(f"Fetch latest {form_type}", use_container_width=True, key="fetch_filing"):
+    if st.button(f"Fetch latest {form_type}", type="primary", use_container_width=True, key="fetch_filing"):
         try:
             meta, sections = _fetch(company, form_type)
             st.session_state.filing_meta = meta
