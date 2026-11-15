@@ -178,3 +178,11 @@ def test_report_label_reflects_fake_engine():
     tr = orch.ask("What was AMD's revenue last quarter?")
     report_step = next(s for s in tr.steps if s.startswith("report_agent"))
     assert "fake" in report_step and "mistral" not in report_step
+
+
+def test_source_tag_names_real_filings_not_sample():
+    mem = SharedMemory()
+    mem.put("amd_passages", [{"text": "t", "source": {"form": "10-K", "url": "https://www.sec.gov/Archives/x.htm"}}], "data_agent")
+    assert ReportAgent._source_tag(mem) == "(source: SEC EDGAR 10-K)"
+    mem.put("amd_passages", [{"text": "t", "source": {"form": "10-Q", "url": "https://sec.gov/sample/amd.htm"}}], "data_agent")
+    assert ReportAgent._source_tag(mem) == "(sample data)"

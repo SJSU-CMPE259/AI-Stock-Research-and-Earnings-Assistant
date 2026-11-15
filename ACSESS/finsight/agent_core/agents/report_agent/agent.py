@@ -108,6 +108,11 @@ class ReportAgent(Agent):
         q = memory.get("amd_quote") if memory.has("amd_quote") else None
         if (isinstance(q, dict) and q.get("live")) or memory.has("amd_news"):
             return "(live: Finnhub)"
+        # passages fetched from EDGAR (any non-sample company) are real filings, not fixtures
+        p = memory.get("amd_passages") if memory.has("amd_passages") else None
+        src = p[0].get("source", {}) if isinstance(p, list) and p and isinstance(p[0], dict) else {}
+        if src.get("url") and "/sample/" not in src["url"]:
+            return f"(source: SEC EDGAR {src.get('form', 'filing')})"
         return "(sample data)"
 
     def _answer_with_checks(self, llm, messages, valid_ids, facts_blob, facts, tag="(sample data)"):

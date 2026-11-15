@@ -69,12 +69,14 @@ def apply_theme() -> None:
     css = f"""
         <link rel="preconnect" href="https://fonts.googleapis.com">
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Caveat:wght@600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
         <style>
         /* hide Streamlit chrome: menu, Deploy button, header, footer, decoration */
-        #MainMenu, header[data-testid="stHeader"], footer,
-        [data-testid="stToolbar"], [data-testid="stDecoration"],
+        #MainMenu, footer, [data-testid="stToolbarActions"], [data-testid="stAppDeployButton"],
+        [data-testid="stMainMenu"], [data-testid="stDecoration"],
         [data-testid="stStatusWidget"] {{ display: none !important; }}
+        /* keep the header itself: it holds the button that reopens the collapsed sidebar */
+        header[data-testid="stHeader"] {{ background: transparent; }}
 
         .stApp {{ background: radial-gradient(1100px 420px at 30% -8%, {c['surface2']} 0%, {c['bg']} 62%);
             color: {c['text']}; font-family: {FONT_SANS}; }}
@@ -129,6 +131,12 @@ def apply_theme() -> None:
             border-radius:999px; font-size:0.74rem; font-weight:700; border:1px solid; }}
         .fs-card {{ background:{c['surface']}; border:1px solid {c['border']}; box-shadow: 0 1px 3px #10202F14;
             border-radius:14px; padding:18px 20px; }}
+        /* Chat landing (Anna's mockup): handwritten greeting, big centered question */
+        .fs-hello {{ font: 600 1.9rem/1.1 Caveat, "Segoe Print", cursive; color: {c['laya']}; }}
+        .fs-hero {{ text-align: center; font-size: clamp(1.6rem, 3.2vw, 2.3rem); font-weight: 800;
+            letter-spacing: -0.02em; line-height: 1.2; margin: 6px 0 4px; }}
+        .fs-hero span {{ color: {c['laya']}; }}
+        .fs-sub {{ text-align: center; color: {c['muted']}; font-size: 0.95rem; margin: 0 0 16px; }}
         .fs-label {{ font-size:0.7rem; letter-spacing:0.08em; text-transform:uppercase;
             color:{c['muted']}; font-weight:700; }}
         a {{ color: {c['finnhub']}; }}

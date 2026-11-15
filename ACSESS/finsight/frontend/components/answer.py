@@ -89,7 +89,7 @@ def render_answer(trace, memory) -> None:
     else:
         badge = (f'<span class="fs-chip" style="background:{c["laya"]}1f;color:{c["laya"]};'
                  f'border-color:{c["laya"]}66;">{icon("alert", 13, c["laya"])} '
-                 f'Template answer · built from the notes (LLM output failed validation)</span>')
+                 f'Built from the verified facts (the AI draft didn\'t pass the checks)</span>')
 
     cited = []
     for m in _CITE.finditer(trace.answer):
