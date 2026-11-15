@@ -11,8 +11,9 @@ import pandas as pd
 
 from frontend.theme import COLORS, FONT_MONO, FONT_SANS
 
-_AXIS = dict(labelColor=COLORS["text_dim"], titleColor=COLORS["muted"],
-             gridColor=COLORS["border"], domainColor=COLORS["border"], tickColor=COLORS["border"])
+def _axis() -> dict:  # read at call time so the light/dark switch applies
+    return dict(labelColor=COLORS["text_dim"], titleColor=COLORS["muted"],
+                gridColor=COLORS["border"], domainColor=COLORS["border"], tickColor=COLORS["border"])
 
 
 def _base(df, h=300):
@@ -28,9 +29,9 @@ def revenue_chart(points: list[dict], note: str = ""):
     df["idx"] = range(len(df))
     df["label"] = df["revenue_b"].map(lambda v: f"${v:.2f}B")
     x = alt.X("period:N", sort=None, title=None,
-              axis=alt.Axis(labelAngle=0, **_AXIS))
+              axis=alt.Axis(labelAngle=0, **_axis()))
     y = alt.Y("revenue_b:Q", title="Revenue ($B)",
-              scale=alt.Scale(domainMin=0, nice=True), axis=alt.Axis(**_AXIS))
+              scale=alt.Scale(domainMin=0, nice=True), axis=alt.Axis(**_axis()))
     area = alt.Chart(df).mark_area(
         line={"color": COLORS["python"], "strokeWidth": 2.5},
         color=alt.Gradient(gradient="linear",
@@ -59,12 +60,14 @@ def sentiment_chart(points: list[dict]):
     df = pd.DataFrame(rows)
     df["row"] = "sentiment"
     chart = alt.Chart(df).mark_bar().encode(
-        x=alt.X("count:Q", stack="normalize", title=None, axis=alt.Axis(format="%", **_AXIS)),
+        x=alt.X("count:Q", stack="normalize", title=None, axis=alt.Axis(format="%", **_axis())),
         y=alt.Y("row:N", title=None, axis=None),
         color=alt.Color("label:N", scale=alt.Scale(domain=order, range=[cmap[o] for o in order]),
                         legend=alt.Legend(title=None, orient="bottom", labelColor=COLORS["text_dim"])),
         order=alt.Order("label:N"),
         tooltip=["label:N", "count:Q"],
-    ).properties(height=90).configure_view(strokeWidth=0, fill=COLORS["surface"]).configure(
+    # fit-x: Streamlit's full-width "fit" would squeeze axis + legend into the 90 px and hide the bar
+    ).properties(height=90, autosize=alt.AutoSizeParams(type="fit-x", contains="padding")
+    ).configure_view(strokeWidth=0, fill=COLORS["surface"]).configure(
         background=COLORS["surface"], font=FONT_SANS)
     return chart

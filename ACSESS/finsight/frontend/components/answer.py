@@ -66,6 +66,20 @@ def _sources(memory, cited_ids: list[str]) -> list[tuple[str, str]]:
 
 def render_answer(trace, memory) -> None:
     c = COLORS
+    failed = next((e for e in trace.events if e.get("status") == "error"), None)
+    if failed:  # a step crashed: plain-English message, raw error tucked away
+        err = failed.get("detail", "")
+        hint = ("The writing model (Mistral) isn't reachable. Start the GPU tunnel, or turn on "
+                "<b>Offline</b> under Developer settings in the sidebar."
+                if "LLM" in err or "Connection" in err else f"The <b>{failed['agent']}</b> step failed.")
+        st.markdown(
+            f'<div class="fs-card" style="border-left:3px solid {c["error"]};">'
+            f'<div style="font-weight:700;color:{c["error"]};margin-bottom:6px;">'
+            f'{icon("alert", 15, c["error"])} FinSight couldn\'t finish this answer</div>'
+            f'<div style="color:{c["text_dim"]};">{hint}</div></div>', unsafe_allow_html=True)
+        with st.expander("Technical details"):
+            st.code(err, language=None)
+        return
     detail = next((e.get("detail", "") for e in trace.events if e["agent"] == "report_agent"), "")
     verified = "mistral" in detail
     if verified:

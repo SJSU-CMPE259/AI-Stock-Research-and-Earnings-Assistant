@@ -9,10 +9,11 @@ from __future__ import annotations
 import streamlit as st
 
 # ---- color tokens (semantic, WCAG-AA on the navy surfaces) ----
-COLORS = {
+DARK = {
     "bg": "#0B1420",          # app background (deepest)
     "surface": "#111C2B",     # cards
     "surface2": "#16273B",    # raised rows / hover
+    "input": "#16273B",       # text boxes
     "border": "#22374F",
     "text": "#E6EDF3",        # primary text  (contrast ~13:1 on bg)
     "text_dim": "#A6B7C8",    # secondary     (~7:1)
@@ -29,15 +30,34 @@ COLORS = {
     "down": "#E0655A",
 }
 
-# engine → (label, color) for badges
-ENGINE = {
-    "laya": ("Laya", COLORS["laya"]),
-    "mistral": ("Mistral", COLORS["mistral"]),
-    "python": ("Python", COLORS["python"]),
-    "finnhub": ("Finnhub", COLORS["finnhub"]),
-    "sec": ("SEC EDGAR", COLORS["sec"]),
-    "keyword": ("keyword", COLORS["muted"]),
+# same tokens on white: engine colors darkened so text on white stays readable
+LIGHT = {
+    "bg": "#E8EDF2", "surface": "#FFFFFF", "surface2": "#EDF2F7", "input": "#FFFFFF", "border": "#C3CFDB",
+    "text": "#13202F", "text_dim": "#3D4F63", "muted": "#5E6E7F",
+    "laya": "#A8620A", "mistral": "#2563A8", "python": "#0B7A5E", "finnhub": "#157385",
+    "sec": "#5B4BB0", "error": "#C0392B", "up": "#0F7A50", "down": "#C0392B",
 }
+
+# Components import these two dicts, so set_mode() updates them in place.
+COLORS = dict(DARK)
+ENGINE: dict = {}
+
+
+def set_mode(light: bool) -> None:
+    """Switch the palette for this run; call before apply_theme()."""
+    COLORS.update(LIGHT if light else DARK)
+    # engine → (label, color) for badges
+    ENGINE.update({
+        "laya": ("Laya", COLORS["laya"]),
+        "mistral": ("Mistral", COLORS["mistral"]),
+        "python": ("Python", COLORS["python"]),
+        "finnhub": ("Finnhub", COLORS["finnhub"]),
+        "sec": ("SEC EDGAR", COLORS["sec"]),
+        "keyword": ("keyword", COLORS["muted"]),
+    })
+
+
+set_mode(False)
 
 FONT_SANS = "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
 FONT_MONO = "'IBM Plex Mono', 'SFMono-Regular', Menlo, monospace"
@@ -56,7 +76,8 @@ def apply_theme() -> None:
         [data-testid="stToolbar"], [data-testid="stDecoration"],
         [data-testid="stStatusWidget"] {{ display: none !important; }}
 
-        .stApp {{ background: {c['bg']}; color: {c['text']}; font-family: {FONT_SANS}; }}
+        .stApp {{ background: radial-gradient(1100px 420px at 30% -8%, {c['surface2']} 0%, {c['bg']} 62%);
+            color: {c['text']}; font-family: {FONT_SANS}; }}
         section[data-testid="stSidebar"] {{ background: {c['surface']}; border-right: 1px solid {c['border']}; }}
         .block-container {{ padding-top: 1.1rem; max-width: 1360px; }}
 
@@ -68,25 +89,37 @@ def apply_theme() -> None:
         /* tabs → terminal segmented look */
         .stTabs [data-baseweb="tab-list"] {{ gap: 2px; border-bottom: 1px solid {c['border']}; }}
         .stTabs [data-baseweb="tab"] {{
-            background: transparent; color: {c['text_dim']}; font-weight: 600;
-            padding: 8px 18px; border-radius: 8px 8px 0 0;
+            background: transparent; color: {c['text_dim']}; font-weight: 600; font-size: 1rem;
+            padding: 10px 20px; border-radius: 10px 10px 0 0;
         }}
-        .stTabs [aria-selected="true"] {{ background: {c['surface']}; color: {c['text']};
-            border-bottom: 2px solid {c['laya']}; }}
+        .stTabs [aria-selected="true"] {{ background: {c['surface']}; color: {c['laya']};
+            border-bottom: 3px solid {c['laya']}; }}
 
         /* inputs */
         [data-testid="stTextInput"] input, [data-testid="stTextArea"] textarea,
         [data-baseweb="select"] > div {{
-            background: {c['surface2']} !important; color: {c['text']} !important;
+            background: {c['input']} !important; color: {c['text']} !important;
             border-color: {c['border']} !important;
         }}
+        [data-testid="stTextInput"] input {{ font-size: 1.02rem; padding: 12px 14px; }}
+        [data-testid="stTextInput"] input::placeholder, textarea::placeholder {{
+            color: {c['muted']} !important; opacity: 1; }}
+        [data-testid="stTextInput"] > div {{ border-radius: 12px; }}
+        [data-testid="stTextInput"] > div:focus-within {{ border-color: {c['laya']} !important;
+            box-shadow: 0 0 0 3px {c['laya']}33; }}
         /* buttons */
         .stButton > button {{
             background: {c['surface2']}; color: {c['text']}; border: 1px solid {c['border']};
-            font-weight: 600; border-radius: 8px;
+            font-weight: 600; border-radius: 12px; min-height: 46px; transition: all .15s ease;
         }}
-        .stButton > button:hover {{ border-color: {c['laya']}; color: {c['text']}; }}
-        .stButton > button[kind="primary"] {{ background: {c['mistral']}; border-color: {c['mistral']}; color: #fff; }}
+        .stButton > button:hover {{ border-color: {c['laya']}; color: {c['text']}; transform: translateY(-1px); }}
+        .stButton > button[kind="primary"] {{ background: linear-gradient(135deg, #E8A63A, #F2C46B);
+            border: none; color: #13202F; font-weight: 800; box-shadow: 0 6px 18px #E8A63A40; }}
+        /* example-question pills; short action buttons never break mid-word */
+        .st-key-agent_chips button {{ min-height: 0; color: {c['text_dim']}; background: {c['surface']};
+            border: 1px solid {c['border']}; }}
+        .st-key-agent_chips button:hover {{ border-color: {c['laya']}; color: {c['text']}; }}
+        .st-key-ask_btn p, .st-key-new_chat p {{ white-space: nowrap; }}
 
         /* visible keyboard focus (a11y) */
         *:focus-visible {{ outline: 2px solid {c['laya']} !important; outline-offset: 2px; }}
@@ -94,7 +127,7 @@ def apply_theme() -> None:
         /* reusable chip + card classes */
         .fs-chip {{ display:inline-flex; align-items:center; gap:6px; padding:3px 10px;
             border-radius:999px; font-size:0.74rem; font-weight:700; border:1px solid; }}
-        .fs-card {{ background:{c['surface']}; border:1px solid {c['border']};
+        .fs-card {{ background:{c['surface']}; border:1px solid {c['border']}; box-shadow: 0 1px 3px #10202F14;
             border-radius:14px; padding:18px 20px; }}
         .fs-label {{ font-size:0.7rem; letter-spacing:0.08em; text-transform:uppercase;
             color:{c['muted']}; font-weight:700; }}
@@ -104,7 +137,12 @@ def apply_theme() -> None:
             color: {c['text_dim']} !important; -webkit-text-fill-color: {c['text_dim']} !important;
             opacity: 1 !important; font-family: {FONT_MONO}; font-size: 0.82rem; }}
         /* expander header + body readable */
-        [data-testid="stExpander"] summary {{ color: {c['text']} !important; font-weight: 600; }}
+        [data-testid="stExpander"] summary {{ color: {c['text']} !important; font-weight: 600;
+            background: {c['surface']} !important; }}
+        [data-testid="stExpander"] summary:hover {{ background: {c['surface2']} !important; }}
+        /* widget labels: a light-mode browser gives them Streamlit's faint gray */
+        [data-testid="stWidgetLabel"] p {{ color: {c['text_dim']} !important; }}
+        [data-testid="stCode"] pre {{ background: {c['surface2']} !important; color: {c['text']} !important; }}
         [data-testid="stExpander"] {{ border-color: {c['border']} !important; }}
         details {{ background: {c['surface']}; border-radius: 10px; }}
         /* captions readable on dark (a11y contrast) */

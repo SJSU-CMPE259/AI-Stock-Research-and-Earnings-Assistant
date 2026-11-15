@@ -12,7 +12,7 @@ from dotenv import load_dotenv  # noqa: E402
 load_dotenv(Path(__file__).parent.parent / ".env")  # so status chips see FINNHUB_API_KEY
 
 from frontend.companies import COMPANY_INFO, SAMPLE_TICKER, company_name, logo_url
-from frontend.theme import COLORS, apply_theme, chip
+from frontend.theme import COLORS, apply_theme, chip, set_mode
 from frontend.components.header import render_header
 from frontend.components.filing_panel import render_filing_qa
 from frontend.components.how_it_works import render_how_it_works
@@ -24,8 +24,10 @@ st.set_page_config(
     page_title="FinSight — SEC research",
     page_icon=str(_ASSETS / "logo.svg"),
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="auto",  # open on desktop, closed on phones
 )
+# the toggle below sets this key; reading it first styles the whole run
+set_mode(st.session_state.get("light_mode", False))
 apply_theme()
 
 with st.sidebar:
@@ -43,17 +45,18 @@ with st.sidebar:
     )
     st.markdown('<div class="fs-label">Filing type</div>', unsafe_allow_html=True)
     form_type = st.selectbox("Filing type", ["10-K", "10-Q"], label_visibility="collapsed")
+    st.toggle("☀️ Light mode", key="light_mode")
     st.markdown("---")
     st.caption("SEC EDGAR filings as source of truth.")
     st.caption("Research / educational use only · not financial advice.")
 
 render_header(st.session_state.get("use_fake", False), st.session_state.get("use_laya", False))
 
-tab_filing, tab_agent, tab_how = st.tabs(["📄 Filing Q&A", "🔀 Agent Demo", "ⓘ How it works"])
-with tab_filing:
-    render_filing_qa(company, form_type)
+tab_agent, tab_filing, tab_how = st.tabs(["💬 Ask FinSight", "📄 Filing Q&A", "ⓘ How it works"])
 with tab_agent:
     render_agent_demo(company)
+with tab_filing:
+    render_filing_qa(company, form_type)
 with tab_how:
     render_how_it_works()
 st.stop()
