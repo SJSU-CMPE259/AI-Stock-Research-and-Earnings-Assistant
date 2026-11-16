@@ -99,7 +99,11 @@ def _archive() -> None:
 
 def _submit() -> None:
     """Ask button / Enter: take the question and clear the box, like a chat app."""
-    st.session_state.to_ask = st.session_state.agent_q.strip()
+    # typing then clicking Ask fires the box's on_change AND the button's on_click;
+    # the second call sees the box already cleared, so it must not overwrite the question
+    q = st.session_state.agent_q.strip()
+    if q:
+        st.session_state.to_ask = q
     st.session_state.agent_q = ""
 
 
