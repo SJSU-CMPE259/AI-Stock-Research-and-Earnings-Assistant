@@ -20,7 +20,8 @@ from pathlib import Path
 from typing import Callable
 
 from finsight.datastore.api import html_to_text
-from finsight.rag.sections import SPLITTER_VERSION, Section, split_exhibit, split_filing
+from finsight.rag.sections import (SPLITTER_VERSION, TRANSCRIPT_SPLITTER_VERSION, Section,
+                                   split_exhibit, split_filing, split_transcript)
 from finsight.rag.store import EMBED_CHUNK, VectorStore, get_store
 from finsight.tools.xbrl import fiscal_label
 
@@ -148,4 +149,58 @@ def index_all(conn: sqlite3.Connection, tickers: list[str] | None = None,
     flush()
     if progress and (had_tail or last_reported != len(accs)):
         progress(results, len(accs), len(accs))
+    return results
+
+# ---------- earnings-call transcripts ----------
+
+def _transcript_payloads(row: dict, sections: list[Section]) -> list[dict]:
+    """Same payload shape as a filing's, so search, retrieve() and citations work unchanged.
+    form="TRANSCRIPT", topic="earnings_call", accession = the transcript's doc_id."""
+    label = fiscal_label(row["fiscal_year"], row["fiscal_period"])
+    out = []
+    for si, sec in enumerate(sections):
+        for p in sec.passages:
+            out.append({
+                "passage_id": f"{row['doc_id']}/{sec.item}/p{p.seq:03d}",
+                "accession": row["doc_id"], "ticker": row["ticker"], "form": "TRANSCRIPT",
+                "filing_date": row["call_date"] or row["fetched_at"][:10], "fiscal_label": label,
+                "document_url": row["source_url"] or "",
+                "part": "", "item": sec.item, "topic": sec.topic, "title": sec.title,
+                "section": f"Earnings call · {sec.title} ({row['source']})", "section_idx": si,
+                "seq": p.seq, "heading": p.heading, "text": p.text, "n_words": p.n_words,
+                "splitter_version": TRANSCRIPT_SPLITTER_VERSION,
+            })
+    return out
+
+
+def index_transcripts(conn: sqlite3.Connection, tickers: list[str] | None = None,
+                      force: bool = False, store: VectorStore | None = None) -> list[dict]:
+    """Index every stored transcript (datastore.transcripts) that isn't in the vector DB yet."""
+    import json
+
+    from finsight.datastore.transcript_store import list_transcripts
+    from finsight.tools.transcripts import Transcript
+
+    store = store or get_store()
+    rows = [r for r in list_transcripts(conn)
+            if not tickers or r["ticker"] in {t.upper() for t in tickers}]
+    results, prepared = [], []
+    for r in rows:
+        did = r["doc_id"]
+        try:
+            if not force and store.count(accessions=[did], splitter_version=TRANSCRIPT_SPLITTER_VERSION):
+                results.append({"accession": did, "skipped": True})
+                continue
+            t = Transcript.from_dict(json.loads(Path(r["local_path"]).read_text()))
+            sections = split_transcript(t.turns)
+            payloads = _transcript_payloads(r, sections)
+            res = {"accession": did, "ticker": r["ticker"], "form": "TRANSCRIPT",
+                   "sections": len(sections), "passages": len(payloads), "found_items": True,
+                   "topics": ["earnings_call"], "_payloads": payloads}
+            prepared.append(res)
+            results.append(res)
+        except Exception as e:  # noqa: BLE001 — log and keep going
+            results.append({"accession": did, "error": f"{type(e).__name__}: {e}"})
+    if prepared:
+        _store(store, prepared)
     return results

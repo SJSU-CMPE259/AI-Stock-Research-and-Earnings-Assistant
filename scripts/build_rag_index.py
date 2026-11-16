@@ -27,6 +27,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))   # run fro
 
 from finsight.datastore import db  # noqa: E402
 from finsight.rag import RETRIEVAL_MODES, exhibits, get_store, guess_topics, index_all, retrieve, search  # noqa: E402
+from finsight.rag.index import index_transcripts  # noqa: E402
 from finsight.rag.retrieve import DEFAULT_BUDGET, latest_accessions  # noqa: E402
 
 
@@ -55,7 +56,10 @@ def main() -> None:
             ap.error("--ask needs --ticker")
         if a.search:                       # pure ranked search: what --mode actually changes
             topics = guess_topics(a.ask) or None
-            accs = latest_accessions(a.ticker, tuple(a.forms), a.filings, topics[0] if topics else None,
+            forms = tuple(a.forms)
+            if topics and "earnings_call" in topics and "TRANSCRIPT" not in forms:
+                forms += ("TRANSCRIPT",)           # same rule as retrieve()
+            accs = latest_accessions(a.ticker, forms, a.filings, topics[0] if topics else None,
                                      conn=conn, store=store)
             hits = search(a.ask, a.ticker, topics, accs or None, k=a.k, mode=a.mode, store=store)
             print(f"ranked search · mode={a.mode} · topics={topics} · filings={accs} · top {len(hits)}\n")
@@ -99,6 +103,13 @@ def main() -> None:
         print(f"  {done}/{total} filings · {n:,} paragraphs embedded · {el:,.0f}s{rate}", flush=True)
 
     results = index_all(conn, a.tickers, force=a.force or a.rebuild, store=store, progress=progress)
+    tr = index_transcripts(conn, a.tickers, force=a.force or a.rebuild, store=store)
+    if tr:
+        new = [r for r in tr if "passages" in r]
+        print(f"transcripts: indexed {len(new)} ({sum(r['passages'] for r in new):,} passages) · "
+              f"skipped {sum(1 for r in tr if r.get('skipped'))} · "
+              f"errors {sum(1 for r in tr if 'error' in r)}")
+        results += tr
     done = [r for r in results if "passages" in r]
     print(f"indexed {len(done)} filings ({sum(r['passages'] for r in done):,} paragraphs) in "
           f"{time.time() - t0:.0f}s · skipped {sum(1 for r in results if r.get('skipped'))} · "
