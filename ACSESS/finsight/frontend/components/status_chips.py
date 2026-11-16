@@ -6,25 +6,19 @@ an error. Used in the top bar so the demo state is always honest and visible.
 from __future__ import annotations
 
 import os
-import socket
 import urllib.request
+
+import streamlit as st
 
 from frontend.theme import COLORS, chip
 
 
-def _endpoint_live(port: int, path: str, timeout: float = 0.8) -> bool:
-    """True only if the server actually RESPONDS (not just the tunnel socket being open).
-
-    A dead PSC node still accepts the tunnel's TCP connection but resets requests, so a
-    bare socket check reports a false 'live'. We do a quick HTTP GET and require a reply.
-    """
+@st.cache_data(ttl=20, show_spinner=False)  # a remote box adds latency; don't ping on every click
+def _endpoint_live(url: str, timeout: float = 2.0) -> bool:
+    """True only if the server actually RESPONDS with 200 (a dead PSC node behind an open
+    tunnel accepts the TCP connection but resets requests, so a socket check isn't enough)."""
     try:
-        with socket.create_connection(("localhost", port), timeout=0.3):
-            pass
-    except OSError:
-        return False
-    try:
-        with urllib.request.urlopen(f"http://localhost:{port}{path}", timeout=timeout) as r:
+        with urllib.request.urlopen(url, timeout=timeout) as r:
             return r.status == 200
     except Exception:  # noqa: BLE001 — reset / timeout / error => not live
         return False
@@ -36,9 +30,12 @@ def backend_status(use_fake: bool, use_laya: bool) -> dict:
     if use_fake:
         mistral = ("Mistral offline", c["muted"])
     else:
-        mistral = ("Mistral live", c["python"]) if _endpoint_live(8000, "/v1/models") else ("Mistral down", c["error"])
+        # the same URLs the agents call (.env), so a public-IP box shows green too
+        url = os.getenv("REMOTE_LLM_URL", "http://localhost:8000/v1").rstrip("/") + "/models"
+        mistral = ("Mistral live", c["python"]) if _endpoint_live(url) else ("Mistral down", c["error"])
     if use_laya:
-        laya = ("Laya live", c["python"]) if _endpoint_live(8001, "/health") else ("Laya down", c["error"])
+        url = os.getenv("LAYA_URL", "http://localhost:8001").rstrip("/") + "/health"
+        laya = ("Laya live", c["python"]) if _endpoint_live(url) else ("Laya down", c["error"])
     else:
         laya = ("Router: keyword", c["muted"])
     finnhub = ("Finnhub live", c["python"]) if os.getenv("FINNHUB_API_KEY") else ("Finnhub: sample", c["laya"])

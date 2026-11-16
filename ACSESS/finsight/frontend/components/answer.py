@@ -11,6 +11,7 @@ import re
 
 import streamlit as st
 
+from agent_core.agents.report_agent.agent import _select_passages
 from frontend.components.icons import icon
 from frontend.theme import COLORS
 
@@ -41,14 +42,15 @@ def _inline(answer: str) -> str:
     return "".join(out).replace("\n", "<br>")
 
 
-def _sources(memory, cited_ids: list[str]) -> list[tuple[str, str]]:
+def _sources(memory, cited_ids: list[str], question: str) -> list[tuple[str, str]]:
     """Map cited ids to their note/passage/quote/news/filing text from shared memory."""
     out = {}
     if memory.has("amd_notes"):
         for n in memory.get("amd_notes"):
             out[n["id"]] = n["text"]
     if memory.has("amd_passages"):
-        for i, p in enumerate(memory.get("amd_passages"), 1):
+        # number passages exactly as report_agent did (its top-3 picks), or P1 points at the wrong text
+        for i, p in enumerate(_select_passages(memory.get("amd_passages"), question), 1):
             out.setdefault(f"P{i}", p["text"])
     if memory.has("amd_quote"):
         q = memory.get("amd_quote")
@@ -108,7 +110,7 @@ def render_answer(trace, memory) -> None:
         unsafe_allow_html=True,
     )
 
-    srcs = _sources(memory, cited)
+    srcs = _sources(memory, cited, trace.question)
     if srcs:
         st.markdown('<div class="fs-label" style="margin-top:10px;">Sources</div>', unsafe_allow_html=True)
         for cid, text in srcs:

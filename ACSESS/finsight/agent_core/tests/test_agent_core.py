@@ -186,3 +186,16 @@ def test_source_tag_names_real_filings_not_sample():
     assert ReportAgent._source_tag(mem) == "(source: SEC EDGAR 10-K)"
     mem.put("amd_passages", [{"text": "t", "source": {"form": "10-Q", "url": "https://sec.gov/sample/amd.htm"}}], "data_agent")
     assert ReportAgent._source_tag(mem) == "(sample data)"
+
+
+def test_ui_sources_number_passages_like_report_agent():
+    """The answer's [P1] must open the same passage the report agent gave Mistral as P1."""
+    from frontend.components.answer import _sources
+    q = "How did gaming revenue change?"
+    mem = SharedMemory()
+    mem.put("amd_passages", [{"text": "Data center revenue grew."}, {"text": "Momentum continues."},
+                             {"text": "Gaming revenue declined as console demand softened."}], "data_agent")
+    facts = dict(ReportAgent()._gather(mem, q)[0])
+    ui = dict(_sources(mem, ["P1", "P2", "P3"], q))
+    assert facts["P1"].startswith("Gaming")  # picked first: most overlap with the question
+    assert ui == {k: v for k, v in facts.items() if k.startswith("P")}
