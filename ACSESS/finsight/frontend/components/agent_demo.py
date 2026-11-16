@@ -1,14 +1,12 @@
 """Chat tab — a simple landing (question first), then the cited answer; routing, the
 agent pipeline and shared memory sit in a collapsible "How FinSight answered this".
 
-Follows the header's company. The real_time route works for any ticker (Finnhub);
-numbers have bundled AMD sample data only, so for another company we show a clear
-notice and a "Show AMD sample instead" button — never a silent switch.
+Follows the header's company. Every route works for any ticker: revenue from real SEC XBRL,
+sentiment/text from the company's latest filing, real_time quotes via Finnhub.
 """
 from __future__ import annotations
 
 import html
-import re
 
 import streamlit as st
 
@@ -16,7 +14,6 @@ from agent_core.llm import FakeLLM, MistralLLM
 from agent_core.memory import Conversation, SharedMemory
 from agent_core.orchestrator import Orchestrator
 from agent_core.orchestrator import resolve_ticker
-from agent_core.orchestrator import route as keyword_route
 from frontend.charts import revenue_chart, sentiment_chart
 from frontend.companies import SAMPLE_TICKER, short_name
 from frontend.components.answer import _inline, render_answer
@@ -51,7 +48,6 @@ def _run(orch: Orchestrator, question: str, ticker: str) -> None:
         "notes": mem.get("amd_notes"), "sentiment": mem.get("amd_sentiment"),
         "memtext": mem.describe() or "(empty)",
     }
-    st.session_state.pending_mismatch = None
 
 
 def _context_chips(orch: Orchestrator) -> None:
@@ -153,29 +149,10 @@ def _chat(company: str) -> None:
 
     to_run = st.session_state.pop("to_ask", "")
     if to_run:
-        intended = keyword_route(to_run)
         # Use the ticker named in the question if any (so "AMD revenue" runs even when the
         # sidebar shows another company); else fall back to the sidebar company.
         eff = resolve_ticker(to_run, Conversation()) or company
-        # Only the numbers route needs bundled data (AMD-only, no XBRL yet). Sentiment/text
-        # now fetch the selected company's real SEC filing, so they run for any company.
-        if intended == "numbers" and eff != SAMPLE_TICKER:
-            st.session_state.pending_mismatch = {"q": to_run, "intended": intended, "company": eff}
-            _archive()
-        else:
-            _run(orch, to_run, ticker=eff)
-
-    pm = st.session_state.get("pending_mismatch")
-    if pm:
-        st.info(
-            f"Revenue figures for {short_name(pm['company'])} aren't connected yet. Right now only "
-            f"**{SAMPLE_TICKER} sample data** is available for revenue questions."
-        )
-        if st.button(f"Show {SAMPLE_TICKER} sample instead", type="primary"):
-            # the question names the other ticker, which would override the AMD choice
-            q = re.sub(rf"\b{re.escape(pm['company'])}\b", SAMPLE_TICKER, pm["q"], flags=re.I)
-            _run(orch, q, ticker=SAMPLE_TICKER)
-            st.rerun()  # redraw without the warning, which was drawn before the click
+        _run(orch, to_run, ticker=eff)
 
     res = st.session_state.get("agent_result")
     if not res:
@@ -197,7 +174,7 @@ def _chat(company: str) -> None:
     chart = res["chart"]
     if tr.route == "numbers" and chart and chart.get("points"):
         st.markdown('<div class="fs-label" style="margin-top:14px;">Revenue trend '
-                    f'<span style="color:{c["muted"]};">· {src}</span></div>', unsafe_allow_html=True)
+                    f'<span style="color:{c["muted"]};">· SEC XBRL</span></div>', unsafe_allow_html=True)
         _delta_chips(res.get("notes"))
         st.altair_chart(revenue_chart(chart["points"], chart.get("note", "")), use_container_width=True)
         st.caption("Changes computed in Python from the quarterly figures.")
@@ -243,7 +220,6 @@ def _new_chat() -> None:
     st.session_state.agent_orch = _fresh(st.session_state.agent_fake, st.session_state.agent_laya)
     st.session_state.agent_result = None
     st.session_state.agent_history = []
-    st.session_state.pending_mismatch = None
     st.session_state.agent_q = ""
 
 

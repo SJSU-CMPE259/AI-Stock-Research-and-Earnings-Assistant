@@ -243,3 +243,69 @@ def split_exhibit(text: str, name: str = "EX-99.1") -> Section:
     """An 8-K press release (Exhibit 99.1) has no Items: one section, topic "press_release"."""
     return Section("", name, "press_release", "Press release (Exhibit 99.1)", text,
                    split_paragraphs(text))
+
+
+# ---------- earnings-call transcripts ----------
+
+TRANSCRIPT_SPLITTER_VERSION = 1
+QA_START_RE = re.compile(r"question[- ]and[- ]answer|first question|open (up )?the (call|line)s? (for|to) "
+                         r"questions|take (your|some) questions", re.IGNORECASE)
+
+
+def _qa_start(turns) -> int:
+    """Index of the first Q&A turn: the first analyst, or the operator opening the Q&A."""
+    for i, t in enumerate(turns):
+        if "analyst" in (t.title or "").lower():
+            for j in range(i - 1, max(i - 3, -1), -1):      # include the operator's intro just before
+                if (turns[j].speaker or "").lower() == "operator" or QA_START_RE.search(turns[j].content):
+                    return j
+            return i
+    for i, t in enumerate(turns):
+        if i > 0 and QA_START_RE.search(t.content):
+            return i
+    return len(turns)
+
+
+def _who(t) -> str:
+    return f"{t.speaker} ({t.title})" if t.title and t.title != t.speaker else (t.speaker or "Speaker")
+
+
+def _turn_passages(turns) -> list[Passage]:
+    """Speaker turns -> ~220-word passages. Every passage starts with who is speaking, so search
+    can match "what did the CFO say" and the answer can attribute the quote.
+
+    Short turns ("Thank you.", the operator naming the next analyst) are merged into the next
+    turn instead of standing alone; long turns are cut at sentence boundaries."""
+    out: list[Passage] = []
+    buf: list[str] = []
+    speakers: list[str] = []
+
+    def emit():
+        if buf:
+            out.append(Passage(len(out), " ".join(buf), ", ".join(dict.fromkeys(speakers))))
+            buf.clear()
+            speakers.clear()
+
+    for t in turns:
+        who = _who(t)
+        for chunk in _split_long(t.content):
+            if buf and len(" ".join(buf).split()) >= MIN_WORDS:
+                emit()
+            buf.append(f"{who}: {chunk}")
+            speakers.append(t.speaker or who)
+    emit()
+    return out
+
+
+def split_transcript(turns) -> list[Section]:
+    """A call's turns (objects with speaker, title, content) -> two sections, both topic
+    "earnings_call": prepared remarks, then the analyst Q&A."""
+    i = _qa_start(turns)
+    parts = [("REMARKS", "Prepared remarks", turns[:i]), ("QA", "Q&A", turns[i:])]
+    sections = []
+    for item, title, tt in parts:
+        if not tt:
+            continue
+        text = "\n\n".join(f"{_who(t)}: {t.content}" for t in tt)
+        sections.append(Section("", item, "earnings_call", title, text, _turn_passages(tt)))
+    return sections
