@@ -22,7 +22,7 @@ anthropic==0.21.0
 openai==1.6.1
 
 # Frontend
-streamlit==1.29.0
+streamlit>=1.40  # st.pills, columns vertical_alignment
 
 # Testing
 pytest==7.4.3
