@@ -1,6 +1,6 @@
 """Analysis agent: compute QoQ / YoY / trend notes in Python (never the LLM).
 
-Writes amd_notes as a list of {id, text, values, source}. The report agent later
+Writes notes as a list of {id, text, values, source}. The report agent later
 cites these by id (e.g. [N1]) and must copy the numbers exactly.
 """
 from __future__ import annotations
@@ -21,13 +21,13 @@ def _pct(new: float, old: float) -> float:
 
 class AnalysisAgent(Agent):
     name = "analysis_agent"
-    reads = ["amd_revenue_quarterly"]
-    writes = ["amd_notes"]
+    reads = ["revenue_quarterly"]
+    writes = ["notes"]
 
     def run(self, ticker: str, question: str, memory: SharedMemory, llm) -> str:
         self.check_inputs(memory)
         rows = sorted(
-            memory.get("amd_revenue_quarterly"),
+            memory.get("revenue_quarterly"),
             key=lambda e: (e["fiscal_year"], _Q_ORDER[e["fiscal_period"]]),
         )
         latest = rows[-1]
@@ -99,9 +99,9 @@ class AnalysisAgent(Agent):
         })
 
         memory.put(
-            "amd_notes", notes, self.name,
+            "notes", notes, self.name,
             sources=[n["source"] for n in notes],
             description=f"{len(notes)} computed notes (QoQ, YoY, trend)",
         )
         headline = notes[0]["text"] if notes else "no notes"
-        return f"{self.name}: read amd_revenue_quarterly -> wrote amd_notes ({len(notes)} notes); {headline}"
+        return f"{self.name}: read revenue_quarterly -> wrote notes ({len(notes)} notes); {headline}"

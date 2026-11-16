@@ -145,7 +145,7 @@ class Orchestrator:
                 continue
             if self._reuse_fresh_quote(agent, trace, ticker):
                 self._emit(trace, on_step, {"agent": agent.name, "status": "reused",
-                                            "ms": 0.0, "wrote": ["amd_quote"]})
+                                            "ms": 0.0, "wrote": ["quote"]})
                 continue
 
             t0 = time.time()
@@ -198,23 +198,23 @@ class Orchestrator:
 
         Must match on ticker: a fresh AMD quote must not be reused for an NVDA question.
         """
-        if not isinstance(agent, MarketAgent) or not self.memory.has("amd_quote"):
+        if not isinstance(agent, MarketAgent) or not self.memory.has("quote"):
             return False
-        quote = self.memory.get("amd_quote")
+        quote = self.memory.get("quote")
         if not isinstance(quote, dict) or quote.get("ticker") != ticker:
             return False  # different (or unknown) ticker -> fetch fresh
-        age = self.memory.age_seconds("amd_quote")
+        age = self.memory.age_seconds("quote")
         if age is not None and age < QUOTE_TTL_S:
             trace.steps.append(
                 f"{agent.name}: reused fresh quote (age {age:.0f}s < {QUOTE_TTL_S}s) — skipped"
             )
-            trace.reused.append("amd_quote")
+            trace.reused.append("quote")
             return True
         return False
 
     def _remember_period(self) -> None:
-        if self.memory.has("amd_notes"):
-            notes = self.memory.get("amd_notes")
+        if self.memory.has("notes"):
+            notes = self.memory.get("notes")
             if notes:
                 self.conversation.current_period = notes[0]["values"].get("fiscal_label")
 

@@ -1,12 +1,9 @@
 """Agent Demo tab — routing → pipeline → cited answer, over one shared memory.
 
-Follows the sidebar company. The real_time route works for any ticker (Finnhub);
-numbers/sentiment have bundled AMD sample data only, so for another company we show
-a clear notice and a "Use AMD sample" button — never a silent switch.
+Follows the sidebar company. Every route works for any ticker: revenue from real SEC XBRL,
+sentiment/text from the company's latest filing, real_time quotes via Finnhub.
 """
 from __future__ import annotations
-
-import re
 
 import streamlit as st
 
@@ -14,7 +11,6 @@ from agent_core.llm import FakeLLM, MistralLLM
 from agent_core.memory import Conversation, SharedMemory
 from agent_core.orchestrator import Orchestrator
 from agent_core.orchestrator import resolve_ticker
-from agent_core.orchestrator import route as keyword_route
 from frontend.charts import revenue_chart, sentiment_chart
 from frontend.companies import SAMPLE_TICKER, company_name
 from frontend.components.answer import render_answer
@@ -70,12 +66,11 @@ def _run(orch: Orchestrator, question: str, ticker: str) -> None:
     mem = orch.memory
     st.session_state.agent_result = {
         "tr": tr, "ticker": ticker,
-        "quote": mem.get("amd_quote"), "news": mem.get("amd_news"),
-        "chart": mem.get("amd_chart"), "schart": mem.get("amd_sentiment_chart"),
-        "notes": mem.get("amd_notes"), "sentiment": mem.get("amd_sentiment"),
+        "quote": mem.get("quote"), "news": mem.get("news"),
+        "chart": mem.get("chart"), "schart": mem.get("sentiment_chart"),
+        "notes": mem.get("notes"), "sentiment": mem.get("sentiment"),
         "memtext": mem.describe() or "(empty)",
     }
-    st.session_state.pending_mismatch = None
 
 
 def _context_chips(orch: Orchestrator) -> None:
@@ -138,35 +133,14 @@ def render_agent_demo(company: str) -> None:
     if ncol.button("↻ New chat", use_container_width=True, key="new_chat"):
         st.session_state.agent_orch = _fresh(use_fake, use_laya)
         st.session_state.agent_result = None
-        st.session_state.pending_mismatch = None
         st.rerun()
 
     to_run = clicked or (question if (run and question.strip()) else None)
     if to_run:
-        intended = keyword_route(to_run)
         # Use the ticker named in the question if any (so "AMD revenue" runs even when the
         # sidebar shows another company); else fall back to the sidebar company.
         eff = resolve_ticker(to_run, Conversation()) or company
-        # Only the numbers route needs bundled data (AMD-only, no XBRL yet). Sentiment/text
-        # now fetch the selected company's real SEC filing, so they run for any company.
-        if intended == "numbers" and eff != SAMPLE_TICKER:
-            st.session_state.pending_mismatch = {"q": to_run, "intended": intended, "company": eff}
-            st.session_state.agent_result = None
-        else:
-            _run(orch, to_run, ticker=eff)
-
-    pm = st.session_state.get("pending_mismatch")
-    if pm:
-        st.warning(
-            f"The **{pm['intended']}** route runs on bundled **{SAMPLE_TICKER} sample data** — "
-            f"{company_name(company)} ({company}) numbers aren't available offline. "
-            f"Switch the sidebar company to {SAMPLE_TICKER}, or use the sample below."
-        )
-        if st.button(f"Use {SAMPLE_TICKER} sample data", type="primary"):
-            # the question names the other ticker, which would override the AMD choice
-            q = re.sub(rf"\b{re.escape(pm['company'])}\b", SAMPLE_TICKER, pm["q"], flags=re.I)
-            _run(orch, q, ticker=SAMPLE_TICKER)
-            st.rerun()  # redraw without the warning, which was drawn before the click
+        _run(orch, to_run, ticker=eff)
 
     res = st.session_state.get("agent_result")
     if not res:
@@ -188,7 +162,7 @@ def render_agent_demo(company: str) -> None:
     chart = res["chart"]
     if tr.route == "numbers" and chart and chart.get("points"):
         st.markdown('<div class="fs-label" style="margin-top:14px;">Revenue · viz_agent '
-                    f'<span style="color:{c["muted"]};">· {src}</span></div>', unsafe_allow_html=True)
+                    f'<span style="color:{c["muted"]};">· SEC XBRL</span></div>', unsafe_allow_html=True)
         _delta_chips(res.get("notes"))
         st.altair_chart(revenue_chart(chart["points"], chart.get("note", "")), use_container_width=True)
         st.caption("Deltas computed in Python from the quarterly figures (analysis_agent) · not financial advice.")

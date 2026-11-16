@@ -13,7 +13,7 @@ class Agent:
 
     Each agent: (1) checks its inputs exist, (2) does its work, (3) writes outputs to
     memory, (4) returns a one-line summary like
-    'analysis_agent: read amd_revenue_quarterly -> wrote amd_notes (3 notes)'.
+    'analysis_agent: read revenue_quarterly -> wrote notes (3 notes)'.
     """
 
     name: str = "agent"

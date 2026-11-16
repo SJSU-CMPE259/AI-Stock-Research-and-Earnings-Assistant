@@ -44,21 +44,21 @@ def _inline(answer: str) -> str:
 def _sources(memory, cited_ids: list[str]) -> list[tuple[str, str]]:
     """Map cited ids to their note/passage/quote/news/filing text from shared memory."""
     out = {}
-    if memory.has("amd_notes"):
-        for n in memory.get("amd_notes"):
+    if memory.has("notes"):
+        for n in memory.get("notes"):
             out[n["id"]] = n["text"]
-    if memory.has("amd_passages"):
-        for i, p in enumerate(memory.get("amd_passages"), 1):
+    if memory.has("passages"):
+        for i, p in enumerate(memory.get("passages"), 1):
             out.setdefault(f"P{i}", p["text"])
-    if memory.has("amd_quote"):
-        q = memory.get("amd_quote")
+    if memory.has("quote"):
+        q = memory.get("quote")
         if isinstance(q, dict) and "price" in q:
             out["Q1"] = f"Current price {q['price']} {q.get('currency', 'USD')} as of {q.get('as_of', '')}"
-    if memory.has("amd_news"):
-        for i, a in enumerate(memory.get("amd_news"), 1):
+    if memory.has("news"):
+        for i, a in enumerate(memory.get("news"), 1):
             out[f"H{i}"] = f"{a.get('source', '')}, {a.get('date', '')}: {a.get('headline', '')}"
-    if memory.has("amd_sentiment"):
-        s = memory.get("amd_sentiment")
+    if memory.has("sentiment"):
+        s = memory.get("sentiment")
         if isinstance(s, dict) and s.get("summary"):
             out["S1"] = s["summary"]
     return [(cid, out[cid]) for cid in cited_ids if cid in out]
