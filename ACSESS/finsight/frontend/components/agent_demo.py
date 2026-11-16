@@ -77,6 +77,7 @@ CHIPS = {
     "Revenue trend": "How did {co}'s revenue change year over year?",
     "Stock price": "What is {co} trading at right now?",
     "Recent news": "What's the latest news on {co} today?",
+    "Should I buy?": "Should I buy {co} stock?",  # shows the no-advice guardrail
 }
 
 
@@ -110,7 +111,8 @@ def _chat(company: str) -> None:
         st.markdown('<div class="fs-hello" style="text-align:center;">Hey there 👋</div>',
                     unsafe_allow_html=True)
     st.markdown(f'<div class="fs-hero">What would you like to know about <span>{short}</span>?</div>'
-                f'<div class="fs-sub">Explore company filings, financial trends, and recent news.</div>',
+                f'<div class="fs-sub">Explore company filings, financial trends, and recent news. '
+                'Every number is computed in Python and every claim is cited.</div>',
                 unsafe_allow_html=True)
 
     # engine switches are for developers, so they live in the sidebar

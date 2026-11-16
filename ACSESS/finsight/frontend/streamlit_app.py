@@ -36,6 +36,10 @@ apply_theme()
 brand, pick = st.columns([3, 1.2], vertical_alignment="center")
 with brand:
     render_header()
+    # which engines are live (Mistral / router / Finnhub / SEC), always visible like before
+    st.markdown('<div style="display:flex;gap:6px;flex-wrap:wrap;margin:2px 0 0 54px;">'
+                + chips_html(st.session_state.get("use_fake", False), st.session_state.get("use_laya", False))
+                + "</div>", unsafe_allow_html=True)
 with pick.container(horizontal=True, horizontal_alignment="right", vertical_alignment="bottom"):
     company = st.selectbox("Company", list(COMPANY_INFO), width=230,
                            format_func=lambda t: f"{COMPANY_INFO[t]['short']} ({t})")
@@ -44,12 +48,6 @@ with pick.container(horizontal=True, horizontal_alignment="right", vertical_alig
               on_click=lambda: st.session_state.update(light_mode=not light))
 st.markdown(f'<div style="border-bottom:1px solid {COLORS["border"]};margin:4px 0 6px;"></div>',
             unsafe_allow_html=True)
-
-with st.sidebar:
-    st.markdown('<div class="fs-label" style="margin-top:12px;">Status</div>', unsafe_allow_html=True)
-    st.markdown('<div style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 12px;">'
-                + chips_html(st.session_state.get("use_fake", False), st.session_state.get("use_laya", False))
-                + "</div>", unsafe_allow_html=True)
 
 tab_agent, tab_filing, tab_mcp, tab_how = st.tabs(["Chat", "Filing Q&A", "MCP Demo", "How it works"])
 with tab_agent:

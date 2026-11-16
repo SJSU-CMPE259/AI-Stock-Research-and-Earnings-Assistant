@@ -82,7 +82,11 @@ def render_answer(trace, memory) -> None:
         return
     detail = next((e.get("detail", "") for e in trace.events if e["agent"] == "report_agent"), "")
     verified = "mistral" in detail
-    if verified:
+    if trace.route == "refuse":  # advice question: declined before any agent or LLM ran
+        badge = (f'<span class="fs-chip" style="background:{c["sec"]}1f;color:{c["sec"]};'
+                 f'border-color:{c["sec"]}66;">{icon("alert", 13, c["sec"])} '
+                 f'Declined · FinSight shares facts, not investment advice</span>')
+    elif verified:
         badge = (f'<span class="fs-chip" style="background:{c["python"]}1f;color:{c["python"]};'
                  f'border-color:{c["python"]}66;">{icon("check", 13, c["python"])} '
                  f'Verified · every number matches the notes</span>')
