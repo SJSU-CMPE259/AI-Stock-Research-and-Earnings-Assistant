@@ -47,7 +47,10 @@ TOPIC_HINTS: list[tuple[str, str]] = [
      r"strategy|what does .* (do|sell|make)", "business"),
     (r"critical accounting|accounting estimate|accounting polic", "mdna"),
     (r"press release|earnings release|announce", "press_release"),
+    (r"earnings call|conference call|\bon the call\b|\bthe call\b|analysts? (asked|question)|"
+     r"\bq&a\b|prepared remarks|transcript|\b(ceo|cfo) (said|say|says|comment)", "earnings_call"),
 ]
+TRANSCRIPT_FORM = "TRANSCRIPT"   # earnings-call transcripts (datastore.transcripts), not an SEC form
 SUMMARY_RE = re.compile(r"summari|overview|outline|main risks|key risks|list (the|all)|all (the )?risk",
                         re.IGNORECASE)
 
@@ -115,11 +118,17 @@ def latest_accessions(ticker: str, forms=NARRATIVE_FORMS, n: int = 1, topic: str
                       conn=None, store: VectorStore | None = None) -> list[str]:
     """Newest INDEXED filings for a ticker (optionally only ones that have `topic`)."""
     c, st = conn or db.connect(), store or get_store()
+    sec_forms = [f for f in forms if f != TRANSCRIPT_FORM]
     rows = c.execute(
-        f"SELECT accession FROM filings WHERE ticker=? AND form IN ({','.join('?' * len(forms))}) "
-        f"AND local_path IS NOT NULL ORDER BY filing_date DESC", [ticker.upper(), *forms]).fetchall()
+        f"SELECT accession, filing_date FROM filings WHERE ticker=? AND form IN ({','.join('?' * len(sec_forms))}) "
+        f"AND local_path IS NOT NULL", [ticker.upper(), *sec_forms]).fetchall() if sec_forms else []
+    rows = [tuple(r) for r in rows]
+    if TRANSCRIPT_FORM in forms:
+        from finsight.datastore.transcript_store import list_transcripts
+        rows += [(r["doc_id"], r["call_date"] or r["fetched_at"][:10]) for r in list_transcripts(c, ticker)]
+    rows.sort(key=lambda r: r[1] or "", reverse=True)
     out = []
-    for (acc,) in rows:
+    for acc, _date in rows:
         if st.count(accessions=[acc], topics=[topic] if topic else None):
             out.append(acc)
             if len(out) >= n:
@@ -238,6 +247,8 @@ def retrieve(question: str, ticker: str, topics: list[str] | None = None,
         raise ValueError(f"search_mode must be one of {RETRIEVAL_MODES}")
     c, st = conn or db.connect(), store or get_store()
     topics = topics if topics is not None else guess_topics(question)
+    if "earnings_call" in (topics or []) and TRANSCRIPT_FORM not in forms:
+        forms = (*forms, TRANSCRIPT_FORM)      # only transcripts have this topic
     if topics:
         whole = [e for t in topics for e in get_section(ticker, t, forms, n_filings, c, st)]
         if whole:
