@@ -140,7 +140,7 @@ class Orchestrator:
         for agent_cls in ROUTES[r]:
             agent = agent_cls()
 
-            if self._reuse_stored_data(agent, trace):
+            if self._reuse_stored_data(agent, trace, ticker):
                 self._emit(trace, on_step, {"agent": agent.name, "status": "reused",
                                             "ms": 0.0, "wrote": list(agent.writes)})
                 continue
@@ -179,20 +179,30 @@ class Orchestrator:
             except Exception:  # noqa: BLE001 — a UI callback must never break a run
                 pass
 
-    def _reuse_stored_data(self, agent, trace: Trace) -> bool:
-        """Skip data_agent if its stored outputs are already in memory."""
+    # data_agent always writes these on a real run; the per-metric series are optional
+    _REUSE_KEYS = ("amd_revenue_quarterly", "amd_passages")
+
+    def _reuse_stored_data(self, agent, trace: Trace, ticker: str | None) -> bool:
+        """Skip data_agent only if its stored outputs are present AND belong to this ticker.
+
+        Entity safety (Task 3): a stored item for another company is never reused — reuse
+        requires the stored data's ticker to match the current question's ticker.
+        """
         if not isinstance(agent, DataAgent):
             return False
-        if all(
-            self.memory.has(w) and self.memory.item(w).freshness == "stored"
-            for w in agent.writes
-        ):
-            trace.steps.append(
-                f"{agent.name}: reused stored data ({', '.join(agent.writes)}) — skipped"
-            )
-            trace.reused.extend(agent.writes)
-            return True
-        return False
+        present = [k for k in self._REUSE_KEYS
+                   if self.memory.has(k) and self.memory.item(k).freshness == "stored"]
+        if not present:
+            return False
+        for k in present:
+            val = self.memory.get(k)
+            row = val[0] if isinstance(val, list) and val else val
+            if isinstance(row, dict) and row.get("ticker") and row["ticker"] != ticker:
+                return False  # different company in memory -> fetch again
+        reused = [w for w in agent.writes if self.memory.has(w)]
+        trace.steps.append(f"{agent.name}: reused stored data for {ticker} ({', '.join(reused)}) — skipped")
+        trace.reused.extend(reused)
+        return True
 
     def _reuse_fresh_quote(self, agent, trace: Trace, ticker: str | None) -> bool:
         """Skip market_agent only if a quote for THIS ticker is younger than QUOTE_TTL_S.
