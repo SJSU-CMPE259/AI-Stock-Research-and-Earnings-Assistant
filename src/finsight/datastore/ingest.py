@@ -7,6 +7,7 @@ Safe to run again: existing rows are updated, nothing is duplicated.
 from __future__ import annotations
 
 import sqlite3
+import requests
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -60,7 +61,14 @@ def ingest_company(conn: sqlite3.Connection, ticker: str, years: int = 3,
     )
 
     # 2. Figures (also gives us the fiscal label of every 10-K / 10-Q)
-    facts_json = xbrl.get_company_facts(ticker)
+    # A newly listed company (e.g. ANT) has no 10-Q/10-K XBRL yet: the SEC answers 404.
+    # Load its filings anyway; figures arrive with its first periodic report.
+    try:
+        facts_json = xbrl.get_company_facts(ticker)
+    except requests.HTTPError as e:
+        if e.response is None or e.response.status_code != 404:
+            raise
+        facts_json = {}
     fiscal = xbrl.filing_periods(facts_json)
     quarter_ends = sorted(
         (end, fy, "Q4" if fp == "FY" else fp) for fy, fp, end in fiscal.values()
