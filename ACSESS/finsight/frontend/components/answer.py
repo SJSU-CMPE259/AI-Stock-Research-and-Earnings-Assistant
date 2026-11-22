@@ -11,6 +11,7 @@ import re
 
 import streamlit as st
 
+from agent_core.agents.report_agent.agent import _select_passages
 from frontend.components.icons import icon
 from frontend.theme import COLORS
 
@@ -41,14 +42,15 @@ def _inline(answer: str) -> str:
     return "".join(out).replace("\n", "<br>")
 
 
-def _sources(memory, cited_ids: list[str]) -> list[tuple[str, str]]:
+def _sources(memory, cited_ids: list[str], question: str) -> list[tuple[str, str]]:
     """Map cited ids to their note/passage/quote/news/filing text from shared memory."""
     out = {}
     if memory.has("amd_notes"):
         for n in memory.get("amd_notes"):
             out[n["id"]] = n["text"]
     if memory.has("amd_passages"):
-        for i, p in enumerate(memory.get("amd_passages"), 1):
+        # number passages exactly as report_agent did (its top-3 picks), or P1 points at the wrong text
+        for i, p in enumerate(_select_passages(memory.get("amd_passages"), question), 1):
             out.setdefault(f"P{i}", p["text"])
     if memory.has("amd_quote"):
         q = memory.get("amd_quote")
@@ -82,14 +84,18 @@ def render_answer(trace, memory) -> None:
         return
     detail = next((e.get("detail", "") for e in trace.events if e["agent"] == "report_agent"), "")
     verified = "mistral" in detail
-    if verified:
+    if trace.route == "refuse":  # advice question: declined before any agent or LLM ran
+        badge = (f'<span class="fs-chip" style="background:{c["sec"]}1f;color:{c["sec"]};'
+                 f'border-color:{c["sec"]}66;">{icon("alert", 13, c["sec"])} '
+                 f'Declined · FinSight shares facts, not investment advice</span>')
+    elif verified:
         badge = (f'<span class="fs-chip" style="background:{c["python"]}1f;color:{c["python"]};'
                  f'border-color:{c["python"]}66;">{icon("check", 13, c["python"])} '
                  f'Verified · every number matches the notes</span>')
     else:
         badge = (f'<span class="fs-chip" style="background:{c["laya"]}1f;color:{c["laya"]};'
                  f'border-color:{c["laya"]}66;">{icon("alert", 13, c["laya"])} '
-                 f'Template answer · built from the notes (LLM output failed validation)</span>')
+                 f'Built from the verified facts (the AI draft didn\'t pass the checks)</span>')
 
     cited = []
     for m in _CITE.finditer(trace.answer):
@@ -104,7 +110,7 @@ def render_answer(trace, memory) -> None:
         unsafe_allow_html=True,
     )
 
-    srcs = _sources(memory, cited)
+    srcs = _sources(memory, cited, trace.question)
     if srcs:
         st.markdown('<div class="fs-label" style="margin-top:10px;">Sources</div>', unsafe_allow_html=True)
         for cid, text in srcs:

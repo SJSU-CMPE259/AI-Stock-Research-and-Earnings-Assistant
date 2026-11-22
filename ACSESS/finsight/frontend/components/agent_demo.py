@@ -1,9 +1,12 @@
-"""Agent Demo tab — routing → pipeline → cited answer, over one shared memory.
+"""Chat tab — a simple landing (question first), then the cited answer; routing, the
+agent pipeline and shared memory sit in a collapsible "How FinSight answered this".
 
-Follows the sidebar company. Every route works for any ticker: revenue from real SEC XBRL,
+Follows the header's company. Every route works for any ticker: revenue from real SEC XBRL,
 sentiment/text from the company's latest filing, real_time quotes via Finnhub.
 """
 from __future__ import annotations
+
+import html
 
 import streamlit as st
 
@@ -12,38 +15,11 @@ from agent_core.memory import Conversation, SharedMemory
 from agent_core.orchestrator import Orchestrator
 from agent_core.orchestrator import resolve_ticker
 from frontend.charts import revenue_chart, sentiment_chart
-from frontend.companies import SAMPLE_TICKER, company_name
-from frontend.components.answer import render_answer
+from frontend.companies import SAMPLE_TICKER, short_name
+from frontend.components.answer import _inline, render_answer
 from frontend.components.pipeline import render_pipeline, render_route_card
 from frontend.components.quote_card import render_quote_card
 from frontend.theme import COLORS
-
-# Curated AMD demo set, grouped by the route each question takes (and the agents it
-# runs). A single question uses only its route's agents by design; across the set every
-# agent runs. All AMD so every question has real sample/live data.
-# {co} = the selected sidebar company. Real-time (price/news) and the guardrail work for
-# ANY company via Finnhub. Numbers/Sentiment/Business run on bundled AMD sample data only,
-# so they stay AMD and are labelled as such. ({co} is substituted at render time.)
-SAMPLE_GROUPS = [
-    ("Live price & news · {co}", "any company", [
-        "What is {co} trading at right now?",
-        "What's the latest news on {co} today?",
-    ]),
-    ("Revenue & growth · AMD sample", "Data → Analysis → Viz → Report", [
-        "What was AMD's revenue last quarter?",
-        "How did AMD's revenue change year over year?",
-    ]),
-    ("Filing sentiment · {co}", "Data → Classify → Viz → Report  ·  real 10-K", [
-        "What is the tone of {co}'s recent filings?",
-    ]),
-    ("Business · {co}", "Data → Report  ·  real 10-K", [
-        "Tell me about {co}'s business and products",
-    ]),
-    ("Advice guardrail · {co}", "router refuses", [
-        "Should I buy {co}?",
-    ]),
-]
-
 
 def _fresh(use_fake: bool, use_laya: bool) -> Orchestrator:
     llm = FakeLLM() if use_fake else MistralLLM()
@@ -63,6 +39,7 @@ def _run(orch: Orchestrator, question: str, ticker: str) -> None:
     orch.conversation.current_ticker = ticker
     with st.spinner("Agents working…"):
         tr = orch.ask(question)
+    _archive()
     mem = orch.memory
     st.session_state.agent_result = {
         "tr": tr, "ticker": ticker,
@@ -90,13 +67,53 @@ def _context_chips(orch: Orchestrator) -> None:
     st.markdown(f'<div style="margin:2px 0 10px;">{chips}</div>', unsafe_allow_html=True)
 
 
+# Landing chips (Anna's mockup): short label -> the question it puts in the box.
+CHIPS = {
+    "Filing highlights": "Tell me about {co}'s business and products",
+    "Revenue trend": "How did {co}'s revenue change year over year?",
+    "Stock price": "What is {co} trading at right now?",
+    "Recent news": "What's the latest news on {co} today?",
+    "Should I buy?": "Should I buy {co} stock?",  # shows the no-advice guardrail
+}
+
+
 def render_agent_demo(company: str) -> None:
+    _, mid, _ = st.columns([1, 6, 1])  # one calm centered column, like the mockup
+    with mid:
+        _chat(company)
+
+
+def _archive() -> None:
+    """Move the current answer into the on-screen thread (display only; the backend keeps
+    its own last-3 Q&A context for follow-ups)."""
+    prev = st.session_state.get("agent_result")
+    if prev:
+        st.session_state.setdefault("agent_history", []).append(
+            {"q": prev["tr"].question, "answer": prev["tr"].answer})
+    st.session_state.agent_result = None
+
+
+def _submit() -> None:
+    """Ask button / Enter: take the question and clear the box, like a chat app."""
+    # typing then clicking Ask fires the box's on_change AND the button's on_click;
+    # the second call sees the box already cleared, so it must not overwrite the question
+    q = st.session_state.agent_q.strip()
+    if q:
+        st.session_state.to_ask = q
+    st.session_state.agent_q = ""
+
+
+def _chat(company: str) -> None:
     c = COLORS
-    st.markdown('<div style="font-size:2.3rem;font-weight:800;margin-top:10px;letter-spacing:-0.02em;">'
-                f'<span style="color:{c["text"]};">Ask Fin</span><span style="color:{c["laya"]};">Sight</span></div>'
-                f'<div style="color:{c["text_dim"]};font-size:1rem;margin-bottom:14px;">'
-                f'Ask about {company_name(company)} in plain English. Every number is computed in '
-                'Python and every claim is cited to its source.</div>', unsafe_allow_html=True)
+    short = short_name(company)
+    in_chat = bool(st.session_state.get("agent_result"))
+    if not in_chat:
+        st.markdown('<div class="fs-hello" style="text-align:center;">Hey there 👋</div>',
+                    unsafe_allow_html=True)
+    st.markdown(f'<div class="fs-hero">What would you like to know about <span>{short}</span>?</div>'
+                f'<div class="fs-sub">Explore company filings, financial trends, and recent news. '
+                'Every number is computed in Python and every claim is cited.</div>',
+                unsafe_allow_html=True)
 
     # engine switches are for developers, so they live in the sidebar
     with st.sidebar.expander("Developer settings"):
@@ -114,28 +131,23 @@ def render_agent_demo(company: str) -> None:
         st.session_state.agent_laya = use_laya
     orch = st.session_state.agent_orch
 
-
-    # Search-style box with the action beside it; one sample per route as quick chips.
-    qcol, acol, ncol = st.columns([6, 1, 1.4], vertical_alignment="bottom")
+    cols = st.columns([6, 1], vertical_alignment="center")
     # on_change fires on Enter, so Enter asks just like the button
-    question = qcol.text_input("Ask a question", key="agent_q", label_visibility="collapsed",
-                               placeholder=f"e.g. What is the tone of {company}'s recent filings?",
-                               on_change=lambda: st.session_state.update(agent_enter=True))
-    run = acol.button("Ask", type="primary", use_container_width=True, key="ask_btn") or st.session_state.pop("agent_enter", False)
-    clicked = None
-    samples = [qs[0].replace("{co}", company) for _, _, qs in SAMPLE_GROUPS]
-    # pills wrap to the screen width; the callback clears the selection so a chip acts like a button
-    def _pick():
-        st.session_state.agent_chip_q = st.session_state.agent_chips
-        st.session_state.agent_chips = None
-    st.pills("Try one:", samples, key="agent_chips", on_change=_pick)
-    clicked = st.session_state.pop("agent_chip_q", None)
-    if ncol.button("↻ New chat", use_container_width=True, key="new_chat"):
-        st.session_state.agent_orch = _fresh(use_fake, use_laya)
-        st.session_state.agent_result = None
-        st.rerun()
+    cols[0].text_input("Ask a question", key="agent_q", label_visibility="collapsed",
+                       placeholder=f"Ask a follow-up about {short}…" if in_chat else f"Ask about {short}…",
+                       on_change=_submit)
+    cols[1].button("Ask", type="primary", use_container_width=True, key="ask_btn", on_click=_submit)
 
-    to_run = clicked or (question if (run and question.strip()) else None)
+    # chips fill the box (as in the mockup); the callback clears the pill so it can be reused
+    def _fill():
+        st.session_state.agent_q = CHIPS[st.session_state.agent_chips].replace("{co}", short)
+        st.session_state.agent_chips = None
+    st.markdown('<div class="fs-sub" style="margin:8px 0 0;">Try a question</div>', unsafe_allow_html=True)
+    with st.container(horizontal=True, horizontal_alignment="center"):
+        st.pills("Try a question", list(CHIPS), key="agent_chips", on_change=_fill,
+                 label_visibility="collapsed")
+
+    to_run = st.session_state.pop("to_ask", "")
     if to_run:
         # Use the ticker named in the question if any (so "AMD revenue" runs even when the
         # sidebar shows another company); else fall back to the sidebar company.
@@ -147,9 +159,9 @@ def render_agent_demo(company: str) -> None:
         return
     tr = res["tr"]
     orch = st.session_state.agent_orch  # _run may have swapped in a fresh one
-    src = "AMD SAMPLE DATA" if res["ticker"] == SAMPLE_TICKER else f"{res['ticker']} · LATEST 10-K"
+    src = "sample data (AMD)" if res["ticker"] == SAMPLE_TICKER else f"from {short_name(res['ticker'])}'s latest 10-K"
 
-    st.markdown('<div class="fs-label" style="margin-top:18px;">Answer</div>', unsafe_allow_html=True)
+    _question_bubble(tr.question)
     render_answer(tr, orch.memory)
 
     if tr.route == "real_time":
@@ -161,16 +173,16 @@ def render_agent_demo(company: str) -> None:
 
     chart = res["chart"]
     if tr.route == "numbers" and chart and chart.get("points"):
-        st.markdown('<div class="fs-label" style="margin-top:14px;">Revenue · viz_agent '
+        st.markdown('<div class="fs-label" style="margin-top:14px;">Revenue trend '
                     f'<span style="color:{c["muted"]};">· SEC XBRL</span></div>', unsafe_allow_html=True)
         _delta_chips(res.get("notes"))
         st.altair_chart(revenue_chart(chart["points"], chart.get("note", "")), use_container_width=True)
-        st.caption("Deltas computed in Python from the quarterly figures (analysis_agent) · not financial advice.")
+        st.caption("Changes computed in Python from the quarterly figures.")
 
     sent = res.get("sentiment")
     schart = res["schart"]
     if tr.route == "sentiment" and schart and schart.get("points"):
-        st.markdown('<div class="fs-label" style="margin-top:14px;">Filing sentiment · classify_agent '
+        st.markdown('<div class="fs-label" style="margin-top:14px;">Filing tone '
                     f'<span style="color:{c["muted"]};">· {src}</span></div>', unsafe_allow_html=True)
         st.altair_chart(sentiment_chart(schart["points"]), use_container_width=True)
         _sentiment_detail(sent)
@@ -185,6 +197,30 @@ def render_agent_demo(company: str) -> None:
         st.markdown('<div class="fs-label" style="margin-top:10px;">Shared memory after this question</div>',
                     unsafe_allow_html=True)
         st.code(res["memtext"])
+
+    # below the answer, where people look for it; a click handler may clear the box above
+    st.button("↻ New chat", key="new_chat", on_click=_new_chat)
+
+    # earlier turns, newest first, under the latest answer (so the new one is never off-screen)
+    history = st.session_state.get("agent_history") or []
+    if history:
+        st.markdown('<div class="fs-label" style="margin-top:22px;">Earlier in this chat</div>',
+                    unsafe_allow_html=True)
+        for turn in reversed(history):
+            _question_bubble(turn["q"])
+            st.markdown(f'<div class="fs-card" style="padding:12px 16px;color:{c["text_dim"]};">'
+                        f'{_inline(turn["answer"])}</div>', unsafe_allow_html=True)
+
+
+def _question_bubble(q: str) -> None:
+    st.markdown(f'<div class="fs-q"><span>{html.escape(q)}</span></div>', unsafe_allow_html=True)
+
+
+def _new_chat() -> None:
+    st.session_state.agent_orch = _fresh(st.session_state.agent_fake, st.session_state.agent_laya)
+    st.session_state.agent_result = None
+    st.session_state.agent_history = []
+    st.session_state.agent_q = ""
 
 
 def _delta_chips(notes: list | None) -> None:
