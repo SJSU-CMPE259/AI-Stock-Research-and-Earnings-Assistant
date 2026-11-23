@@ -51,11 +51,15 @@ def collect_company(conn: sqlite3.Connection, ticker: str, years: int = 3,
     t = ticker.upper()
     since = (today - timedelta(days=365 * years)).isoformat()
 
-    baseline = conn.execute("SELECT 1 FROM filings WHERE ticker=? LIMIT 1", (t,)).fetchone() is None
+    # Baseline = company never loaded. Based on the companies table, not on filings:
+    # a new listing can have zero 10-K/10-Q/8-K filings, and its FIRST report must
+    # still raise an event.
+    baseline = conn.execute("SELECT 1 FROM companies WHERE ticker=?", (t,)).fetchone() is None
     new = find_new_filings(conn, t, since)
     result = {"ticker": t, "new_filings": [], "events": 0, "baseline": baseline}
-    if not new:
+    if not new and not baseline:
         return result
+
 
     ingest.ingest_company(conn, t, years=years, download_docs=download_docs, today=today,
                           overrides=overrides, run_started=started)

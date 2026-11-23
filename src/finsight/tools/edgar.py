@@ -50,13 +50,39 @@ class Filing:
         return asdict(self)
 
 
-def get_cik(ticker: str) -> str:
-    """Return the 10-digit CIK for a ticker, e.g. 'NVDA' -> '0001045810'."""
-    data =sec_client.get_json(TICKERS_URL, ttl=7 * 24 * 60 * 60)
-    t = ticker.upper()
+# New listings can be missing from the SEC's ticker list for a few days.
+# Verify each entry: get_company_info(ticker)["name"] must be the right company.
+CIK_FALLBACK: dict[str, str] = {
+    "ANT": "0002130357",   # Anthropic, PBC (IPO 2026-11-19)
+}
+
+
+def _find_cik(data: dict, t: str) -> str | None:
+    """Look up an upper-case ticker in the SEC's company_tickers.json data."""
     for row in data.values():
         if row["ticker"].upper() == t:
             return str(row["cik_str"]).zfill(10)
+    return None
+
+
+def get_cik(ticker: str) -> str:
+    """Return the 10-digit CIK for a ticker, e.g. 'NVDA' -> '0001045810'."""
+    t = ticker.upper()
+
+    # 1. Cached list (refreshed weekly)
+    cik = _find_cik(sec_client.get_json(TICKERS_URL, ttl=7 * 24 * 60 * 60), t)
+    if cik:
+        return cik
+
+    # 2. Not there: the cache may predate a new listing, so fetch a fresh copy
+    cik = _find_cik(sec_client.get_json(TICKERS_URL, ttl=0), t)
+    if cik:
+        return cik
+
+    # 3. Still missing: the SEC list can lag a new listing by a few days
+    if t in CIK_FALLBACK:
+        return CIK_FALLBACK[t]
+
     raise ValueError(f"Ticker not found in SEC list: {ticker}")
 
 

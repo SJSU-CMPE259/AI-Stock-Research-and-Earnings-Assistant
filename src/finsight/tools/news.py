@@ -32,7 +32,7 @@ PAST_TTL = 7 * 24 * 60 * 60     # range fully in the past: articles won't change
 MAX_DAYS_BACK = 365             # free plan covers about one year
 
 # Names to look for in headlines/summaries (the ticker itself is always included).
-# Add your companies here if they're missing; or pass names=[...] to get_company_news.
+# Add companies here if they're missing; or pass names=[...] to get_company_news.
 ALIASES: dict[str, list[str]] = {
     "NVDA": ["Nvidia"],
     "AAPL": ["Apple", "iPhone"],
@@ -45,6 +45,7 @@ ALIASES: dict[str, list[str]] = {
     "JPM": ["JPMorgan", "JP Morgan", "J.P. Morgan"],
     "AMD": ["Advanced Micro Devices"],
     "INTC": ["Intel"],
+    "ANT": ["Anthropic", "Claude"],
 }
 RELEVANCE_RANK = {"low": 0, "medium": 1, "high": 2}
 
@@ -80,10 +81,15 @@ def _norm(headline: str) -> str:
 
 
 def company_pattern(ticker: str, names: list[str] | None = None) -> re.Pattern:
-    """Regex matching the ticker or any company name as a whole word ("Meta" but not "metaverse")."""
-    terms = [ticker.upper(), *(names if names is not None else ALIASES.get(ticker.upper(), []))]
-    alts = "|".join(re.escape(t) for t in sorted(set(terms), key=len, reverse=True))
-    return re.compile(rf"(?<![A-Za-z0-9])\$?(?:{alts})(?![A-Za-z0-9])", re.IGNORECASE)
+    """Regex matching the ticker or any company name as a whole word ("Meta" but not "metaverse").
+
+    Names match in any case; the ticker only in capitals, so "ANT" matches but
+    "Ant Group" and "ant" don't.
+    """
+    names = names if names is not None else ALIASES.get(ticker.upper(), [])
+    alts = [re.escape(n) for n in sorted(set(names), key=len, reverse=True)]
+    alts.append(f"(?-i:{re.escape(ticker.upper())})")
+    return re.compile(rf"(?<![A-Za-z0-9])\$?(?:{'|'.join(alts)})(?![A-Za-z0-9])", re.IGNORECASE)
 
 
 def relevance(headline: str, summary: str, pattern: re.Pattern) -> str:
