@@ -96,33 +96,51 @@ def test_fresh_quote_not_reused_across_tickers():
 
 # ---- report check: fake IDs and fabricated numbers ------------------------
 
+def _note(fid, text, ticker="AMD"):
+    return {fid: {"id": fid, "text": text, "search_text": text, "ticker": ticker, "kind": "note"}}
+
+
 def test_report_check_catches_fake_id():
-    ok, reason = ReportAgent._check("Revenue 7.10 [N9].", {"N1"}, "Revenue 7.10")
+    ok, reason = ReportAgent._check("Revenue 7.10 [N9].", _note("N1", "Revenue 7.10"), "AMD", False)
     assert not ok and "N9" in reason
 
 
 def test_report_check_catches_fabricated_number():
-    ok, reason = ReportAgent._check("Revenue 99.9 [N1].", {"N1"}, "Revenue 7.10")
+    ok, reason = ReportAgent._check("Revenue 99.9 [N1].", _note("N1", "Revenue 7.10"), "AMD", False)
     assert not ok and "99.9" in reason
 
 
 def test_report_check_accepts_valid_combined_citation():
-    ok, _ = ReportAgent._check("Revenue 7.10 [N1, N2].", {"N1", "N2"}, "Revenue 7.10 grew")
+    by_id = {**_note("N1", "Revenue 7.10 grew"), **_note("N2", "Revenue 7.10 grew")}
+    ok, _ = ReportAgent._check("Revenue 7.10 [N1, N2].", by_id, "AMD", False)
     assert ok
+
+
+def test_report_check_rejects_cross_ticker():
+    # entity safety (Task 3): a note from NVDA cannot support an AMD answer
+    ok, reason = ReportAgent._check("Revenue 7.10 [N1].", _note("N1", "Revenue 7.10", "NVDA"), "AMD", False)
+    assert not ok and "NVDA" in reason
+
+
+def test_report_check_requires_tone_counts():
+    # coverage (Task 4): a tone question must state the counts and cite [S1]
+    by_id = {"S1": {"id": "S1", "search_text": "5 positive", "ticker": "AMD", "kind": "sentiment"}}
+    assert not ReportAgent._check("The tone is positive.", by_id, "AMD", True)[0]
+    assert ReportAgent._check("5 positive [S1].", by_id, "AMD", True)[0]
 
 
 def test_report_falls_back_to_template_when_llm_fabricates():
     mem = SharedMemory()
     mem.put(
         "amd_notes",
-        [{"id": "N1", "text": "Revenue FY2025 Q2: $7.10B.", "values": {"value_usd": 7100000000}, "source": {}}],
+        [{"id": "N1", "text": "Revenue FY2025 Q2: $7.10B.", "values": {"value_usd": 7100000000},
+          "source": {}, "ticker": "AMD", "data_mode": "xbrl"}],
         "analysis_agent",
     )
     # Both attempts invent numbers that aren't in the notes -> template fallback.
     bad_llm = FakeLLM(["Revenue was $99.99B [N1].", "Revenue was $88.88B [N1]."])
     ReportAgent().run("AMD", "revenue?", mem, bad_llm)
     answer = mem.get("answer")
-    assert "(sample data)" in answer
     assert "99.99" not in answer and "88.88" not in answer  # fabricated values rejected
     assert "7.10" in answer  # template uses the real note
 
@@ -178,3 +196,32 @@ def test_report_label_reflects_fake_engine():
     tr = orch.ask("What was AMD's revenue last quarter?")
     report_step = next(s for s in tr.steps if s.startswith("report_agent"))
     assert "fake" in report_step and "mistral" not in report_step
+
+
+# ---- real-data fixes: one passage numbering + no sample for other tickers --
+
+def test_evidence_single_numbering():
+    """[Pk] in the report prompt and in the Sources list come from ONE ordered list."""
+    from agent_core.agents.report_agent.agent import build_evidence
+    mem = SharedMemory()
+    passages = [{"text": f"passage {i}", "ticker": "AMD", "source": {}, "data_mode": "filing"}
+                for i in range(1, 6)]
+    mem.put("amd_passages", passages, "data_agent")
+    ev = build_evidence(mem, "q")
+    ids = [e["id"] for e in ev if e["kind"] == "passage"]
+    pmap = {e["id"]: e["text"] for e in ev if e["kind"] == "passage"}
+    assert ids == ["P1", "P2", "P3", "P4", "P5"]  # stored order preserved
+    assert pmap["P2"] == "passage 2" and pmap["P5"] == "passage 5"
+
+
+def test_data_agent_offline_is_amd_sample_only():
+    """Offline (FakeLLM): AMD -> sample stamped data_mode='sample'; other tickers -> nothing
+    (never sample under another company's name — the K2 bug)."""
+    from agent_core.agents.data_agent.agent import DataAgent
+    nvda = SharedMemory()
+    DataAgent().run("NVDA", "revenue?", nvda, FakeLLM())
+    assert not nvda.has("amd_revenue_quarterly") and not nvda.has("amd_passages")
+    amd = SharedMemory()
+    DataAgent().run("AMD", "revenue?", amd, FakeLLM())
+    rev = amd.get("amd_revenue_quarterly")
+    assert rev and all(r["data_mode"] == "sample" and r["ticker"] == "AMD" for r in rev)

@@ -65,9 +65,12 @@ class ClassifyAgent(Agent):
             + ")."
         )
 
+        tk = (passages[0].get("ticker") if passages else None) or ticker
+        mode = passages[0].get("data_mode", "filing") if passages else "filing"
         memory.put(
             "amd_sentiment",
-            {"labels": labels, "counts": counts, "n": n, "summary": summary},
+            {"labels": labels, "counts": counts, "n": n, "summary": summary,
+             "ticker": tk, "data_mode": mode},
             self.name,
             sources=[p["source"] for p in passages],
             description=summary,
