@@ -29,7 +29,7 @@ REFUSAL = (
 _ADVICE = re.compile(r"\b(buy|sell|hold|invest|recommend)\b", re.IGNORECASE)
 
 # keep in sync with frontend COMPANY_INFO (the selectable companies)
-KNOWN_TICKERS = {"AMD", "NVDA", "AAPL", "MSFT", "TSLA", "INTC", "AMZN", "GOOGL", "META", "JPM"}
+KNOWN_TICKERS = {"AMD", "NVDA", "AAPL", "MSFT", "TSLA", "INTC", "AMZN", "GOOGL", "META", "JPM", "ANT"}
 
 QUOTE_TTL_S = 60  # a real_time quote older than this must be re-fetched
 
