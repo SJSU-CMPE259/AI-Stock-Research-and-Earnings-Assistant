@@ -31,26 +31,33 @@ set_mode(st.session_state.get("light_mode", False))
 apply_theme()
 
 with st.sidebar:
-    st.markdown('<div class="fs-label">Company</div>', unsafe_allow_html=True)
-    company = st.selectbox(
-        "Company", list(COMPANY_INFO),
-        format_func=lambda t: f"{t} — {COMPANY_INFO[t]['name']}",
-        label_visibility="collapsed",
-    )
-    st.markdown(
-        f'<div style="text-align:center;margin:10px 0;">'
-        f'<img src="{logo_url(company)}" alt="{company}" style="width:68px;height:68px;'
-        f'border-radius:14px;background:#fff;padding:8px;object-fit:contain;"></div>',
-        unsafe_allow_html=True,
-    )
-    st.markdown('<div class="fs-label">Filing type</div>', unsafe_allow_html=True)
-    form_type = st.selectbox("Filing type", ["10-K", "10-Q"], label_visibility="collapsed")
     st.toggle("☀️ Light mode", key="light_mode")
     st.markdown("---")
     st.caption("SEC EDGAR filings as source of truth.")
     st.caption("Research / educational use only · not financial advice.")
 
 render_header(st.session_state.get("use_fake", False), st.session_state.get("use_laya", False))
+
+# Company + filing-type pickers live in the main page (always visible), not in the
+# collapsible sidebar where they were easy to miss when it was collapsed.
+_c_company, _c_form, _c_logo = st.columns([4, 2, 1], vertical_alignment="center")
+with _c_company:
+    st.markdown('<div class="fs-label">Company</div>', unsafe_allow_html=True)
+    company = st.selectbox(
+        "Company", list(COMPANY_INFO),
+        format_func=lambda t: f"{t} — {COMPANY_INFO[t]['name']}",
+        label_visibility="collapsed",
+    )
+with _c_form:
+    st.markdown('<div class="fs-label">Filing type</div>', unsafe_allow_html=True)
+    form_type = st.selectbox("Filing type", ["10-K", "10-Q"], label_visibility="collapsed")
+with _c_logo:
+    st.markdown(
+        f'<img src="{logo_url(company)}" alt="{company}" style="width:52px;height:52px;'
+        f'border-radius:12px;background:#fff;padding:6px;object-fit:contain;">',
+        unsafe_allow_html=True,
+    )
+st.markdown("")  # small spacer before the tabs
 
 tab_agent, tab_filing, tab_how = st.tabs(["💬 Ask FinSight", "📄 Filing Q&A", "ⓘ How it works"])
 with tab_agent:
