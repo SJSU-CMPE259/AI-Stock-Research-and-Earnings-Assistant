@@ -18,20 +18,20 @@ from frontend.components.pipeline import render_pipeline, render_route_card
 from frontend.components.quote_card import render_quote_card
 from frontend.theme import COLORS
 
-# Curated AMD demo set, grouped by the route each question takes (and the agents it
-# runs). A single question uses only its route's agents by design; across the set every
-# agent runs. All AMD so every question has real sample/live data.
-# {co} = the selected sidebar company. Real-time (price/news) and the guardrail work for
-# ANY company via Finnhub. Numbers/Sentiment/Business run on bundled AMD sample data only,
-# so they stay AMD and are labelled as such. ({co} is substituted at render time.)
+# Demo questions grouped by the route each takes (and the agents it runs). A single
+# question uses only its route's agents by design; across the set every agent runs.
+# {co} = the selected sidebar company, substituted at render time. In live mode every
+# group works for ANY company: price/news via Finnhub, revenue via SEC XBRL, sentiment
+# and business via the real 10-K. Only offline FakeLLM mode is limited to the bundled
+# AMD sample data.
 SAMPLE_GROUPS = [
     ("Live price & news · {co}", "any company", [
         "What is {co} trading at right now?",
         "What's the latest news on {co} today?",
     ]),
-    ("Revenue & growth · AMD sample", "Data → Analysis → Viz → Report", [
-        "What was AMD's revenue last quarter?",
-        "How did AMD's revenue change year over year?",
+    ("Revenue & growth · {co}", "Data → Analysis → Viz → Report", [
+        "What was {co}'s revenue last quarter?",
+        "How did {co}'s revenue change year over year?",
     ]),
     ("Filing sentiment · {co}", "Data → Classify → Viz → Report  ·  real 10-K", [
         "What is the tone of {co}'s recent filings?",
