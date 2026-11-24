@@ -36,7 +36,7 @@ with st.sidebar:
     st.caption("SEC EDGAR filings as source of truth.")
     st.caption("Research / educational use only · not financial advice.")
 
-render_header(st.session_state.get("use_fake", False), st.session_state.get("use_laya", False))
+render_header(st.session_state.get("use_fake", False), True)
 
 # Company + filing-type pickers live in the main page (always visible), not in the
 # collapsible sidebar where they were easy to miss when it was collapsed.
