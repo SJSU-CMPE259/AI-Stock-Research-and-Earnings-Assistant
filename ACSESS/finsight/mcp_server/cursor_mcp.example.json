@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "finsight": {
+      "command": "/ABSOLUTE/PATH/TO/ACSESS/finsight/.venv-mcp/bin/python",
+      "args": ["/ABSOLUTE/PATH/TO/ACSESS/finsight/mcp_server/server.py"],
+      "env": { "FINSIGHT_FAKE": "0" }
+    }
+  }
+}
