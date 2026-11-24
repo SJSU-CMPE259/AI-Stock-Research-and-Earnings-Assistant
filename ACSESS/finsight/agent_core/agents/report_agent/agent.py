@@ -99,15 +99,32 @@ def build_evidence(memory: SharedMemory, question: str, max_passages: int = 8) -
     return ev
 
 
+# Which evidence kinds each route's answer may draw on. Keeps a question answered from the
+# data its own route gathered, not stale variables left in memory by earlier questions in
+# the session (e.g. a prior price/news query polluting a "business" answer).
+_ROUTE_KINDS: dict[str, set[str]] = {
+    "numbers": {"note"},
+    "real_time": {"quote", "news"},
+    "sentiment": {"sentiment", "passage"},
+    "text": {"passage"},
+}
+
+
 class ReportAgent(Agent):
     name = "report_agent"
     reads: list[str] = []
     writes = ["answer", "evidence"]
 
     def run(self, ticker: str, question: str, memory: SharedMemory, llm) -> str:
-        evidence = build_evidence(memory, question)
+        route = memory.get("route") or ""
+        kinds = _ROUTE_KINDS.get(route)
+        all_ev = build_evidence(memory, question)
+        # Scope to the current route's evidence so the answer (and the Sources panel) use
+        # only what this question gathered — never leftovers from an earlier question in the
+        # session (a prior price/news query must not pollute a "business" answer).
+        evidence = [e for e in all_ev if e["kind"] in kinds] if kinds else all_ev
         memory.put("evidence", evidence, self.name,
-                   description=f"{len(evidence)} labeled sources (prompt == UI)")
+                   description=f"{len(evidence)} labeled sources (route={route or 'all'})")
         if not evidence:
             memory.put(
                 "answer",
@@ -117,23 +134,17 @@ class ReportAgent(Agent):
                 f"recent news.",
                 self.name,
             )
-            return f"{self.name}: no facts in memory -> wrote no-data answer"
+            return f"{self.name}: no facts for route '{route or 'all'}' -> wrote no-data answer"
 
         require_counts = any(e["kind"] == "sentiment" for e in evidence)
-        # A tone/sentiment question is answered from the sentiment summary + filing
-        # passages only. Stale metric notes (e.g. revenue) left in memory by an earlier
-        # question in the same session would otherwise pull the answer off-topic and skip
-        # [S1]. The full evidence list still backs the UI Sources panel (stored above).
-        prompt_ev = ([e for e in evidence if e["kind"] in ("sentiment", "passage")]
-                     if require_counts else evidence)
-        by_id = {e["id"]: e for e in prompt_ev}
-        facts_text = "\n".join(f"[{e['id']}] {e['text']}" for e in prompt_ev)
+        by_id = {e["id"]: e for e in evidence}
+        facts_text = "\n".join(f"[{e['id']}] {e['text']}" for e in evidence)
         convo = "" if require_counts else (memory.get("conversation_state") or "")
         user = question if not convo else f"{question}\n\nRecent conversation:\n{convo}"
         messages = [{"role": "user", "content": f"{user}\n\nFacts:\n{facts_text}"}]
 
         answer, how, attempts, flags = self._answer_with_checks(
-            llm, messages, by_id, prompt_ev, ticker, require_counts)
+            llm, messages, by_id, evidence, ticker, require_counts)
         memory.put("answer", answer, self.name,
                    description=f"final answer ({how}; attempts={attempts})")
         flag_txt = f"; flags={flags}" if flags else ""

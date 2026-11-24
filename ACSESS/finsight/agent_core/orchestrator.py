@@ -137,6 +137,8 @@ class Orchestrator:
             "conversation_state", self.conversation.state_text(), "orchestrator",
             description="recent company/period + last Q/A pairs",
         )
+        # The report agent scopes its evidence to this route's kinds.
+        self.memory.put("route", r, "orchestrator", description="route for this question")
 
         for agent_cls in ROUTES[r]:
             agent = agent_cls()
