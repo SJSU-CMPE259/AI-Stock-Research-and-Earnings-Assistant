@@ -64,10 +64,12 @@ def test_ask_followup_remembers_ticker(orch):
 
 
 def test_ask_numbers_route_warns_sample_data(orch):
-    out = tools.ask_finsight("What was NVDA's revenue last quarter?")
+    # AMD is the only ticker with bundled sample data in fake mode (others now get no-data,
+    # rather than AMD's numbers presented as theirs).
+    out = tools.ask_finsight("What was AMD's revenue last quarter?")
     assert out["route"] == "numbers"
     assert out["quote_live"] is None and out["data_mode"] == "sample"
-    assert any("AMD sample data" in w and "not NVDA data" in w for w in out["warnings"])
+    assert any("AMD sample data" in w for w in out["warnings"])
 
 
 def test_ask_sample_facts_then_live_quote_is_mixed(orch):
@@ -79,7 +81,8 @@ def test_ask_sample_facts_then_live_quote_is_mixed(orch):
 
 
 def test_ask_unknown_ticker_warns(orch):
-    out = tools.ask_finsight("What is GOOGL's price right now?")
+    # ZZZZ is not a supported ticker (GOOGL is now recognized, so it no longer works here).
+    out = tools.ask_finsight("What is ZZZZ's price right now?")
     assert out["ticker"] is None
     assert any("ticker not recognized" in w and "NVDA" in w for w in out["warnings"])
 
@@ -128,10 +131,10 @@ def test_ask_ticker_switch_does_not_reuse_other_quote(orch, monkeypatch):
 
 def test_ask_ticker_switch_does_not_cite_other_quote(orch, monkeypatch):
     _prices_by_symbol(monkeypatch)
-    tools.ask_finsight("What is AMD's price right now?")
-    out = tools.ask_finsight("What was NVDA's revenue last quarter?")
+    tools.ask_finsight("What is NVDA's price right now?")             # quote for NVDA
+    out = tools.ask_finsight("What was AMD's revenue last quarter?")  # switch -> AMD (has sample)
     assert out["route"] == "numbers"
-    assert "[Q1]" not in _facts_given_to_llm(orch)  # numbers route has no market agent
+    assert "[Q1]" not in _facts_given_to_llm(orch)  # the other ticker's quote isn't cited
     assert out["quote_live"] is None and out["data_mode"] == "sample"
 
 
