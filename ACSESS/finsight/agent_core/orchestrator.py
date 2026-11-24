@@ -16,6 +16,7 @@ from agent_core.agents.data_agent.agent import DataAgent
 from agent_core.agents.market_agent.agent import MarketAgent
 from agent_core.agents.report_agent.agent import ReportAgent
 from agent_core.agents.viz_agent.agent import VizAgent
+from agent_core.base import MissingInput
 from agent_core.memory import Conversation, SharedMemory
 
 REFUSAL = (
@@ -157,6 +158,15 @@ class Orchestrator:
                 self._emit(trace, on_step, {"agent": agent.name, "status": "done",
                                             "ms": round(ms, 1), "wrote": list(agent.writes),
                                             "detail": detail})
+            except MissingInput as e:
+                # No upstream data for this agent (e.g. a newly-listed company with no
+                # filings yet): skip it and let the report agent answer from whatever data
+                # exists, rather than failing the whole run with a scary error.
+                ms = (time.time() - t0) * 1000
+                trace.steps.append(f"{agent.name}: skipped — {e}")
+                self._emit(trace, on_step, {"agent": agent.name, "status": "skipped",
+                                            "ms": round(ms, 1), "wrote": [], "detail": str(e)})
+                continue
             except Exception as e:
                 ms = (time.time() - t0) * 1000
                 trace.steps.append(f"{agent.name}: FAILED — {e}")

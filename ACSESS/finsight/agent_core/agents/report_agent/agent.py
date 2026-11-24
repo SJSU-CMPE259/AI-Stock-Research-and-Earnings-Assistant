@@ -109,7 +109,14 @@ class ReportAgent(Agent):
         memory.put("evidence", evidence, self.name,
                    description=f"{len(evidence)} labeled sources (prompt == UI)")
         if not evidence:
-            memory.put("answer", f"I don't have real data to answer that for {ticker} yet.", self.name)
+            memory.put(
+                "answer",
+                f"I don't have SEC filing or financial data for {ticker} yet — it looks "
+                f"newly listed and hasn't filed a 10-K or 10-Q. Once it files, filing and "
+                f"financial questions will work. You can still ask for its live price or "
+                f"recent news.",
+                self.name,
+            )
             return f"{self.name}: no facts in memory -> wrote no-data answer"
 
         require_counts = any(e["kind"] == "sentiment" for e in evidence)
