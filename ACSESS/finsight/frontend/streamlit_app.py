@@ -17,6 +17,7 @@ from frontend.components.header import render_header
 from frontend.components.filing_panel import render_filing_qa
 from frontend.components.how_it_works import render_how_it_works
 from frontend.components.agent_demo import render_agent_demo
+from frontend.components.mcp_panel import render_mcp_panel
 
 
 _ASSETS = Path(__file__).parent / "assets"
@@ -64,6 +65,7 @@ with tab_agent:
     render_agent_demo(company)
 with tab_filing:
     render_filing_qa(company, form_type)
+    render_mcp_panel(company)
 with tab_how:
     render_how_it_works()
 st.stop()
