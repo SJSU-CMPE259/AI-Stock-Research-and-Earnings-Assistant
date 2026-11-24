@@ -42,6 +42,26 @@ def _cited_ids(text: str) -> list[str]:
     return ids
 
 
+def _grounded(num: str, support_text: str, support_nums: list[str]) -> bool:
+    """True if `num` appears in the facts, or is a rounded form of a number there (so
+    "$127.6B" validates against a "127.58" fact). Keeps invented numbers out while not
+    rejecting correct figures over formatting/rounding."""
+    if num in support_text:
+        return True
+    try:
+        val = float(num)
+    except ValueError:
+        return True
+    decimals = len(num.split(".", 1)[1]) if "." in num else 0
+    for s in support_nums:
+        try:
+            if round(float(s), decimals) == val:
+                return True
+        except ValueError:
+            continue
+    return False
+
+
 def build_evidence(memory: SharedMemory, question: str, max_passages: int = 8) -> list[dict]:
     """The one ordered, labeled evidence list — used for the prompt AND the Sources panel.
 
@@ -92,15 +112,21 @@ class ReportAgent(Agent):
             memory.put("answer", f"I don't have real data to answer that for {ticker} yet.", self.name)
             return f"{self.name}: no facts in memory -> wrote no-data answer"
 
-        by_id = {e["id"]: e for e in evidence}
-        facts_text = "\n".join(f"[{e['id']}] {e['text']}" for e in evidence)
-        convo = memory.get("conversation_state") or ""
-        user = question if not convo else f"{question}\n\nRecent conversation:\n{convo}"
         require_counts = any(e["kind"] == "sentiment" for e in evidence)
+        # A tone/sentiment question is answered from the sentiment summary + filing
+        # passages only. Stale metric notes (e.g. revenue) left in memory by an earlier
+        # question in the same session would otherwise pull the answer off-topic and skip
+        # [S1]. The full evidence list still backs the UI Sources panel (stored above).
+        prompt_ev = ([e for e in evidence if e["kind"] in ("sentiment", "passage")]
+                     if require_counts else evidence)
+        by_id = {e["id"]: e for e in prompt_ev}
+        facts_text = "\n".join(f"[{e['id']}] {e['text']}" for e in prompt_ev)
+        convo = "" if require_counts else (memory.get("conversation_state") or "")
+        user = question if not convo else f"{question}\n\nRecent conversation:\n{convo}"
         messages = [{"role": "user", "content": f"{user}\n\nFacts:\n{facts_text}"}]
 
         answer, how, attempts, flags = self._answer_with_checks(
-            llm, messages, by_id, evidence, ticker, require_counts)
+            llm, messages, by_id, prompt_ev, ticker, require_counts)
         memory.put("answer", answer, self.name,
                    description=f"final answer ({how}; attempts={attempts})")
         flag_txt = f"; flags={flags}" if flags else ""
@@ -135,17 +161,17 @@ class ReportAgent(Agent):
             tk = by_id[cid].get("ticker")
             if tk and ticker and tk.upper() != ticker.upper():
                 return False, f"{cid} belongs to {tk}, not {ticker}"
-        # per-citation number support (Task 2): numbers in a cited sentence must appear in a cited id
+        # number grounding (Task 2): every number stated must appear in the provided facts
+        # (with rounding tolerance). Checked against ALL facts, not only the ids cited in
+        # the same sentence — a correct figure the model stated without a bracket is grounded
+        # data, not a hallucination (citation *existence* is enforced above), while an
+        # invented number still fails.
+        support = " ".join(e["search_text"] for e in by_id.values())
+        support_nums = _NUM.findall(support)
         for sent in _SENT.split(answer):
-            ids = _cited_ids(sent)
-            nums = _NUM.findall(_INCIDENTAL.sub(" ", _BRACKET.sub(" ", sent)))
-            if not nums:
-                continue
-            support = " ".join(by_id[c]["search_text"] for c in ids if c in by_id)
-            support_nums = set(_NUM.findall(support))
-            for num in nums:
-                if num not in support_nums and num not in support:
-                    return False, f"number {num} is not in its cited source"
+            for num in _NUM.findall(_INCIDENTAL.sub(" ", _BRACKET.sub(" ", sent))):
+                if not _grounded(num, support, support_nums):
+                    return False, f"number {num} is not in the provided facts"
         # coverage (Task 4): tone questions must state the counts via [S1]
         if require_counts and "S1" not in cited:
             return False, "state the sentiment counts and cite [S1]"
