@@ -33,6 +33,23 @@ _SENT = re.compile(r"(?<=[.!?])\s+")
 # Fiscal-period and SEC-form tokens ("Q2", "FY2027", "10-K", "S-1") are not financial
 # claims; strip them before the number-support check so they don't read as uncited numbers.
 _INCIDENTAL = re.compile(r"\bQ[1-4]\b|\bFY\d{2,4}\b|\b\d+-[A-Z]\b|\bS-1\b", re.IGNORECASE)
+# Mistral sometimes prefixes retry chatter ("Apologies…", "Here's a revised answer:");
+# strip leading preamble sentences so the UI shows just the answer.
+_PREAMBLE = re.compile(
+    r"^\s*(?:(?:my\s+)?apolog\w*|sorry|sure|certainly|here(?:'s| is)|revised answer|"
+    r"based on the provided facts|using only the provided facts)[^.!?:]*[.!?:]+\s*",
+    re.IGNORECASE,
+)
+
+
+def _strip_preamble(text: str) -> str:
+    prev = None
+    while prev != text:
+        prev = text
+        m = _PREAMBLE.match(text)
+        if m and "[" not in m.group(0):  # keep a leading sentence that carries a citation
+            text = text[m.end():].strip()
+    return text
 
 
 def _cited_ids(text: str) -> list[str]:
@@ -154,7 +171,7 @@ class ReportAgent(Agent):
         engine = "fake" if "Fake" in type(llm).__name__ else "mistral"
         last_reason = ""
         for attempt in (1, 2):
-            raw = llm.complete(SYSTEM, messages, max_tokens=300, temperature=0.0).strip()
+            raw = _strip_preamble(llm.complete(SYSTEM, messages, max_tokens=300, temperature=0.0).strip())
             ok, reason = self._check(raw, by_id, ticker, require_counts)
             if ok:
                 return raw, f"{engine}, attempt {attempt}", attempt, []

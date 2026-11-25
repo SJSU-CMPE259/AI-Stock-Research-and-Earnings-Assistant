@@ -30,6 +30,16 @@ DATA_FILE = Path(__file__).resolve().parents[2] / "data" / "sample_amd.json"
 SAMPLE_TICKER = "AMD"
 METRICS = ("revenue", "gross_profit", "operating_income")
 
+# Skip filing boilerplate (forward-looking disclaimers, cross-references, safe-harbor
+# language) so extracted passages carry substance, not legal preamble.
+_BOILERPLATE = re.compile(
+    r"forward-looking statement|incorporated (herein|by reference)|actual results|"
+    r"this annual report|carefully consider the following|safe harbor|undue reliance|"
+    r"except as required by law|see (item|note|part|the section)\b|"
+    r"documents incorporated|the following (discussion|risk factors)",
+    re.IGNORECASE,
+)
+
 
 def load_company_data(path: Path = DATA_FILE) -> dict:
     """The bundled AMD sample dict (offline/test fallback only)."""
@@ -113,17 +123,31 @@ def load_filing_passages(ticker: str, form: str = "10-K", max_passages: int = 8)
     f = filings[0]
     sections = parse_filing(edgar.download_filing(f), f.form)
     filed = getattr(f, "filing_date", None) or getattr(f, "filed", None)
-    wanted = {"Item 1A": "Risk Factors", "Item 7": "MD&A"}
-    per = max(1, max_passages // 2)
+    # Business (Item 1) describes products/segments and, being first in the filing, leads
+    # the list so a "business/products" question answers from it; Risk Factors (1A) and
+    # MD&A (7) follow. Precise matching so "Item 1" != "Item 1A"/"Item 10".
+    def _label(name: str) -> str | None:
+        n = name.upper().strip()
+        if re.match(r"ITEM\s+1A\b", n):
+            return "Risk Factors"
+        if re.match(r"ITEM\s+1\b", n):
+            return "Business"
+        if re.match(r"ITEM\s+7A\b", n):
+            return None
+        if re.match(r"ITEM\s+7\b", n):
+            return "MD&A"
+        return None
+
+    per = max(1, max_passages // 3)
     out: list[dict] = []
     for s in sections:
-        label = next((v for k, v in wanted.items() if s.name.startswith(k)), None)
+        label = _label(s.name)
         if not label:
             continue
         taken = 0
         for sent in re.split(r"(?<=[.!?])\s+", s.text):
             sent = sent.strip().replace("\n", " ")
-            if 80 <= len(sent) <= 400:
+            if 80 <= len(sent) <= 400 and not _BOILERPLATE.search(sent):
                 out.append({
                     "text": sent, "ticker": ticker.upper(), "section": label,
                     "data_mode": "filing",
