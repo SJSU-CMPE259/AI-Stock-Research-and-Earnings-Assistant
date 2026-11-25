@@ -29,12 +29,13 @@ class VizAgent(Agent):
                 {"period": r["fiscal_label"], "revenue_b": round(r["value_usd"] / 1e9, 2)}
                 for r in rows
             ]
+            tag = " (sample data)" if rows and rows[0].get("data_mode") == "sample" else ""
             note = ""
             if memory.has("amd_notes") and memory.get("amd_notes"):
                 note = memory.get("amd_notes")[0]["text"]
             memory.put(
                 "amd_chart",
-                {"type": "bar", "title": f"{ticker or 'AMD'} quarterly revenue (sample data)",
+                {"type": "bar", "title": f"{ticker or 'AMD'} quarterly revenue{tag}",
                  "x_label": "fiscal period", "y_label": "revenue ($B)",
                  "points": points, "note": note},
                 self.name, description=f"revenue chart ({len(points)} quarters)",
@@ -47,9 +48,10 @@ class VizAgent(Agent):
             order = ["positive", "neutral", "negative", "uncertain"]
             points = [{"label": k, "count": int(counts.get(k, 0))}
                       for k in order if counts.get(k)]
+            stag = " (sample data)" if isinstance(s, dict) and s.get("data_mode") == "sample" else ""
             memory.put(
                 "amd_sentiment_chart",
-                {"type": "bar", "title": f"{ticker or 'AMD'} filing sentiment (sample data)",
+                {"type": "bar", "title": f"{ticker or 'AMD'} filing sentiment{stag}",
                  "x_label": "sentiment", "y_label": "passages",
                  "points": points, "note": s.get("summary", "") if isinstance(s, dict) else ""},
                 self.name, description=f"sentiment breakdown ({len(points)} labels)",

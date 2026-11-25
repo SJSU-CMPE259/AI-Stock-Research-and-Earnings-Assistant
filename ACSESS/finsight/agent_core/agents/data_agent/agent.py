@@ -62,11 +62,15 @@ def fetch_financials(ticker: str, n: int = 6) -> dict:
     """
     if not _finsight_src_on_path():
         raise RuntimeError("finsight data layer (src/finsight) not found")
+    from finsight import config as fs_config
     from finsight.datastore import db, ingest
 
     conn = db.connect()
     if not _store_rows(ticker, "revenue", 1, conn):
-        ingest.ingest_company(conn, ticker, download_docs=False)  # fetch SEC companyfacts, save
+        # Per-company XBRL concept overrides (config/concepts.yaml): e.g. a bank like JPM
+        # reports revenue as RevenuesNetOfInterestExpense, not the default "Revenues" tag.
+        overrides = fs_config.load_concept_overrides().get(ticker.upper())
+        ingest.ingest_company(conn, ticker, download_docs=False, overrides=overrides)
     out: dict[str, list[dict]] = {}
     for metric in METRICS:
         rows = _store_rows(ticker, metric, n, conn)
