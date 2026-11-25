@@ -1,8 +1,19 @@
-"""Data agent: load company data into shared memory.
+"""Data agent: load one company's REAL data into shared memory.
 
-Revenue (numbers route) is real SEC XBRL company-facts for any company, via Anna's data
-layer (finsight.tools.xbrl); the bundled AMD sample is the offline fallback. Passages
-(sentiment/text routes) come from the latest EDGAR filing, or the AMD sample.
+Numbers route: quarterly revenue, gross_profit and operating_income from the XBRL store
+(finsight.datastore, SEC companyfacts). If the ticker is not in the store yet it is
+fetched with the existing EDGAR/XBRL loader and saved, then read back. Every value keeps
+its ticker, fiscal period, accession, XBRL concept, filed date and data_mode="xbrl".
+
+Sentiment/text route: passages from the asked ticker's latest 10-K via the existing EDGAR
+fetch (backend.app.tools), filtered to that company's latest filing and sections, with
+data_mode="filing". (The RAG/Qdrant retriever is used read-only when available; it is not
+required here and is never built from this agent.)
+
+No sample data is ever presented as a company's data. The bundled AMD sample is used ONLY
+in offline/unit-test mode (FakeLLM) and is always stamped data_mode="sample" so the report
+text can say so. If real data is missing for a ticker, the item is omitted and the answer
+text must state it — never a silent substitution.
 """
 from __future__ import annotations
 
@@ -17,17 +28,91 @@ from agent_core.memory import SharedMemory
 
 DATA_FILE = Path(__file__).resolve().parents[2] / "data" / "sample_amd.json"
 SAMPLE_TICKER = "AMD"
+METRICS = ("revenue", "gross_profit", "operating_income")
+
+# Skip filing boilerplate (forward-looking disclaimers, cross-references, safe-harbor
+# language) so extracted passages carry substance, not legal preamble.
+_BOILERPLATE = re.compile(
+    r"forward-looking statement|incorporated (herein|by reference)|actual results|"
+    r"this annual report|carefully consider the following|safe harbor|undue reliance|"
+    r"except as required by law|see (item|note|part|the section)\b|"
+    r"documents incorporated|the following (discussion|risk factors)",
+    re.IGNORECASE,
+)
 
 
 def load_company_data(path: Path = DATA_FILE) -> dict:
-    """Return the bundled AMD sample data dict."""
+    """The bundled AMD sample dict (offline/test fallback only)."""
     return json.loads(Path(path).read_text())
+
+
+def _finsight_src_on_path() -> bool:
+    """Put the repo's src/ (finsight data layer) on sys.path, wherever it sits."""
+    for base in Path(__file__).resolve().parents:
+        cand = base / "src"
+        if (cand / "finsight" / "datastore" / "api.py").exists():
+            if str(cand) not in sys.path:
+                sys.path.insert(0, str(cand))
+            return True
+    return False
+
+
+def _store_rows(ticker: str, metric: str, n: int, conn) -> list[dict]:
+    from finsight.datastore import api
+    return api.get_metric(ticker, metric, "quarter", n, conn=conn)
+
+
+@lru_cache(maxsize=8)
+def fetch_financials(ticker: str, n: int = 6) -> dict:
+    """Real quarterly revenue, gross_profit, operating_income from the XBRL store.
+
+    Ingests the ticker (facts only) on a store miss, then reads back. Returns
+    {metric: [rows...]} oldest→newest with QoQ/YoY and provenance. Raises if revenue
+    is unavailable even after ingest. Network call — not used in offline/test mode.
+    """
+    if not _finsight_src_on_path():
+        raise RuntimeError("finsight data layer (src/finsight) not found")
+    from finsight import config as fs_config
+    from finsight.datastore import db, ingest
+
+    conn = db.connect()
+    if not _store_rows(ticker, "revenue", 1, conn):
+        # Per-company XBRL concept overrides (config/concepts.yaml): e.g. a bank like JPM
+        # reports revenue as RevenuesNetOfInterestExpense, not the default "Revenues" tag.
+        overrides = fs_config.load_concept_overrides().get(ticker.upper())
+        ingest.ingest_company(conn, ticker, download_docs=False, overrides=overrides)
+    out: dict[str, list[dict]] = {}
+    for metric in METRICS:
+        rows = _store_rows(ticker, metric, n, conn)
+        out[metric] = [_num_item(ticker, metric, r) for r in reversed(rows)]  # oldest→newest
+    if not out["revenue"]:
+        raise RuntimeError(f"no XBRL revenue in store for {ticker}")
+    return out
+
+
+def _num_item(ticker: str, metric: str, r: dict) -> dict:
+    """One financial fact with full provenance, in the shape the analysis/viz agents use."""
+    return {
+        "ticker": ticker.upper(), "metric": metric,
+        "fiscal_year": r["fiscal_year"], "fiscal_period": r["fiscal_period"],
+        "fiscal_label": r["fiscal_label"], "period_end": r["period_end"],
+        "value_usd": float(r["value"]),
+        "change_qoq_pct": r.get("change_vs_prior_quarter_pct"),
+        "change_yoy_pct": r.get("change_vs_prior_year_pct"),
+        "derived": bool(r.get("derived")),
+        "data_mode": "xbrl",
+        "source": {
+            "form": r.get("form"), "accession": r.get("accession"),
+            "concept": r.get("concept"), "filed": r.get("filed"), "url": r.get("source_url"),
+        },
+    }
 
 
 @lru_cache(maxsize=16)
 def load_filing_passages(ticker: str, form: str = "10-K", max_passages: int = 8) -> tuple:
-    """Fetch a company's latest filing and pull sentiment-relevant passages from
-    Risk Factors (Item 1A) and MD&A (Item 7). Cached per ticker. Raises on failure."""
+    """Up to `max_passages` passages from the asked ticker's latest 10-K (Risk Factors +
+    MD&A), each stamped with ticker, form, accession, section, filed and data_mode="filing".
+    Cached per ticker. Raises on failure."""
     from backend.app.tools.edgar import get_edgar
     from backend.app.tools.sections import parse_filing
 
@@ -37,19 +122,38 @@ def load_filing_passages(ticker: str, form: str = "10-K", max_passages: int = 8)
         raise RuntimeError(f"No {form} found for {ticker} on SEC EDGAR")
     f = filings[0]
     sections = parse_filing(edgar.download_filing(f), f.form)
-    src = {"form": f.form, "accession": f.accession, "url": f.url}
-    wanted = {"Item 1A": "Risk Factors", "Item 7": "MD&A"}
-    per = max(1, max_passages // 2)
+    filed = getattr(f, "filing_date", None) or getattr(f, "filed", None)
+    # Business (Item 1) describes products/segments and, being first in the filing, leads
+    # the list so a "business/products" question answers from it; Risk Factors (1A) and
+    # MD&A (7) follow. Precise matching so "Item 1" != "Item 1A"/"Item 10".
+    def _label(name: str) -> str | None:
+        n = name.upper().strip()
+        if re.match(r"ITEM\s+1A\b", n):
+            return "Risk Factors"
+        if re.match(r"ITEM\s+1\b", n):
+            return "Business"
+        if re.match(r"ITEM\s+7A\b", n):
+            return None
+        if re.match(r"ITEM\s+7\b", n):
+            return "MD&A"
+        return None
+
+    per = max(1, max_passages // 3)
     out: list[dict] = []
     for s in sections:
-        label = next((v for k, v in wanted.items() if s.name.startswith(k)), None)
+        label = _label(s.name)
         if not label:
             continue
         taken = 0
         for sent in re.split(r"(?<=[.!?])\s+", s.text):
             sent = sent.strip().replace("\n", " ")
-            if 80 <= len(sent) <= 400:
-                out.append({"text": sent, "section": label, "source": src})
+            if 80 <= len(sent) <= 400 and not _BOILERPLATE.search(sent):
+                out.append({
+                    "text": sent, "ticker": ticker.upper(), "section": label,
+                    "data_mode": "filing",
+                    "source": {"form": f.form, "accession": f.accession, "section": label,
+                               "filed": str(filed) if filed else None, "url": f.url},
+                })
                 taken += 1
                 if taken >= per:
                     break
@@ -58,84 +162,65 @@ def load_filing_passages(ticker: str, form: str = "10-K", max_passages: int = 8)
     return tuple(out[:max_passages])
 
 
-def _finsight_src_on_path() -> bool:
-    """Put the repo's src/ (Anna's finsight data layer) on sys.path, wherever it sits."""
-    for base in Path(__file__).resolve().parents:
-        cand = base / "src"
-        if (cand / "finsight" / "tools" / "xbrl.py").exists():
-            if str(cand) not in sys.path:
-                sys.path.insert(0, str(cand))
-            return True
-    return False
-
-
-@lru_cache(maxsize=16)
-def fetch_revenue_quarterly(ticker: str, limit: int = 6) -> tuple:
-    """Real quarterly revenue from SEC XBRL (finsight.tools.xbrl), oldest→newest, last `limit`.
-
-    Returns the shape the analysis/viz agents expect; raises on any failure so the caller
-    can fall back. Cached per ticker. Live network call — not used in offline/test mode.
-    """
-    if not _finsight_src_on_path():
-        raise RuntimeError("finsight data layer (src/finsight) not found")
-    from finsight.tools.xbrl import get_metric
-
-    facts = get_metric(ticker, "revenue", "quarterly", limit=limit)
-    rows = sorted(facts, key=lambda f: f.end)  # oldest -> newest
-    if not rows:
-        raise RuntimeError(f"no XBRL revenue facts for {ticker}")
-    return tuple(
-        {
-            "fiscal_year": f.fiscal_year,
-            "fiscal_period": f.fiscal_period,
-            "fiscal_label": f"FY{f.fiscal_year} {f.fiscal_period}",
-            "period_end": f.end,
-            "value_usd": float(f.value),
-            "source": {"form": f.form, "accession": f.accession, "url": f.source_url},
-        }
-        for f in rows
-    )
-
-
 class DataAgent(Agent):
     name = "data_agent"
     reads: list[str] = []
-    writes = ["amd_revenue_quarterly", "amd_passages"]
+    writes = ["amd_revenue_quarterly", "amd_gross_profit_quarterly",
+              "amd_operating_income_quarterly", "amd_passages"]
 
     def run(self, ticker: str, question: str, memory: SharedMemory, llm) -> str:
         tk = (ticker or SAMPLE_TICKER).upper()
-        offline = "Fake" in type(llm).__name__  # unit tests / offline mode: no network
+        offline = "Fake" in type(llm).__name__  # unit tests / offline: no network
         wrote: list[str] = []
 
-        revenue, rev_src = self._revenue(tk, offline)
-        if revenue:
-            memory.put(
-                "amd_revenue_quarterly", list(revenue), self.name,
-                sources=[e["source"] for e in revenue], freshness="stored",
-                description=f"{len(revenue)} quarters of revenue for {tk} ({rev_src})",
-            )
-            wrote.append(f"amd_revenue_quarterly ({len(revenue)}q, {rev_src})")
+        fin, fin_mode = self._financials(tk, offline)
+        if fin and fin.get("revenue"):
+            key_for = {"revenue": "amd_revenue_quarterly",
+                       "gross_profit": "amd_gross_profit_quarterly",
+                       "operating_income": "amd_operating_income_quarterly"}
+            for metric, key in key_for.items():
+                rows = fin.get(metric) or []
+                if rows:
+                    memory.put(key, rows, self.name,
+                               sources=[r["source"] for r in rows], freshness="stored",
+                               description=f"{len(rows)}q {metric} for {tk} ({fin_mode})")
+            wrote.append(f"financials ({len(fin['revenue'])}q, {fin_mode})")
 
-        if tk == SAMPLE_TICKER and (offline or revenue is None or rev_src == "sample"):
-            passages = load_company_data()["passages"]
-        else:
-            passages = list(load_filing_passages(tk))
-        memory.put(
-            "amd_passages", passages, self.name,
-            sources=[p["source"] for p in passages], freshness="stored",
-            description=f"{len(passages)} filing passages for {tk}",
-        )
-        wrote.append(f"amd_passages ({len(passages)})")
+        passages, p_mode = self._passages(tk, offline)
+        if passages:
+            memory.put("amd_passages", passages, self.name,
+                       sources=[p["source"] for p in passages], freshness="stored",
+                       description=f"{len(passages)} passages for {tk} ({p_mode})")
+            wrote.append(f"amd_passages ({len(passages)}, {p_mode})")
+
+        if not wrote:
+            return f"{self.name}: {tk} -> no real data available (nothing written)"
         return f"{self.name}: {tk} -> wrote {', '.join(wrote)}"
 
     @staticmethod
-    def _revenue(tk: str, offline: bool) -> tuple:
-        """(rows, source) — real XBRL for any company, AMD sample as the offline/failure fallback."""
+    def _financials(tk: str, offline: bool) -> tuple[dict | None, str]:
+        """(financials, data_mode). Real XBRL store for any company; AMD sample only offline."""
         if not offline:
             try:
-                return fetch_revenue_quarterly(tk), "SEC XBRL"
+                return fetch_financials(tk), "xbrl"
             except Exception:
-                pass
+                return None, ""
         if tk == SAMPLE_TICKER:
-            return tuple(load_company_data()["revenue_quarterly"]), "sample"
+            rows = [dict(e, ticker=SAMPLE_TICKER, metric="revenue", data_mode="sample")
+                    for e in load_company_data()["revenue_quarterly"]]
+            return {"revenue": rows, "gross_profit": [], "operating_income": []}, "sample"
+        return None, ""
+
+    @staticmethod
+    def _passages(tk: str, offline: bool) -> tuple[list | None, str]:
+        """(passages, data_mode). Real latest-10-K passages for any company; AMD sample only offline."""
+        if not offline:
+            try:
+                return list(load_filing_passages(tk)), "filing"
+            except Exception:
+                return None, ""
+        if tk == SAMPLE_TICKER:
+            ps = [dict(p, ticker=SAMPLE_TICKER, data_mode="sample")
+                  for p in load_company_data()["passages"]]
+            return ps, "sample"
         return None, ""

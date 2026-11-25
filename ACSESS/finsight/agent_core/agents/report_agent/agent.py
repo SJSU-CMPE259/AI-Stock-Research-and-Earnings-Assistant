@@ -1,10 +1,12 @@
 """Report agent: write the final answer with Mistral, cite fact IDs, verify, fall back.
 
-Rules given to Mistral: use ONLY the provided facts, copy numbers exactly, cite IDs
-like [N1], 2-5 sentences, no advice. Then we CHECK the answer: every cited ID must
-exist and every number must appear in the facts. Retry once; if it still fails, build
-a plain template answer straight from the facts so the demo never shows a made-up
-number.
+ONE function (build_evidence) creates the ordered, labeled list used for BOTH the report
+prompt and the UI's Sources, so [Pk] means the same passage in each (Task 2). Checks:
+  - every cited ID exists;
+  - support: every number in a cited sentence appears in the cited note/passage (Task 2);
+  - entity safety: every cited note/passage belongs to the question's ticker (Task 3);
+  - coverage: tone questions must state the sentiment counts via [S1] (Task 4).
+Retry once; else a plain template answer built straight from the facts.
 """
 from __future__ import annotations
 
@@ -15,130 +17,209 @@ from agent_core.memory import SharedMemory
 
 SYSTEM = (
     "You are FinSight, a financial research assistant. Answer the question using ONLY "
-    "the facts provided below. Copy numbers exactly as written. Cite the facts you use "
-    "by their IDs in square brackets, like [N1]. Write 2-5 sentences. Never give "
-    "investment advice and never invent numbers or facts."
+    "the facts provided below. Copy numbers exactly as written (do not round or reword "
+    "them). Answer EVERY part of the question. If a sentiment summary is provided, state "
+    "the exact label counts and cite it. Write 2-6 sentences. Never give investment "
+    "advice and never invent numbers or facts.\n\n"
+    "FORMAT (REQUIRED): end EVERY sentence that states a number with the bracketed ID of "
+    "the fact it came from, e.g. 'Revenue was $96.22B [N1].' Use ONLY IDs that appear in "
+    "the Facts list. A sentence that states a number without a matching [ID] is invalid."
 )
 
 _NUM = re.compile(r"\d+(?:\.\d+)?")
 _BRACKET = re.compile(r"\[([^\]]+)\]")
 _ID_TOKEN = re.compile(r"[A-Z]\d+")
+_SENT = re.compile(r"(?<=[.!?])\s+")
+# Fiscal-period and SEC-form tokens ("Q2", "FY2027", "10-K", "S-1") are not financial
+# claims; strip them before the number-support check so they don't read as uncited numbers.
+_INCIDENTAL = re.compile(r"\bQ[1-4]\b|\bFY\d{2,4}\b|\b\d+-[A-Z]\b|\bS-1\b", re.IGNORECASE)
+# Mistral sometimes prefixes retry chatter ("Apologies…", "Here's a revised answer:");
+# strip leading preamble sentences so the UI shows just the answer.
+_PREAMBLE = re.compile(
+    r"^\s*(?:(?:my\s+)?apolog\w*|sorry|sure|certainly|here(?:'s| is)|revised answer|"
+    r"based on the provided facts|using only the provided facts)[^.!?:]*[.!?:]+\s*",
+    re.IGNORECASE,
+)
 
 
-def _cited_ids(answer: str) -> list[str]:
-    """IDs cited inside brackets, including combined forms like [N1, N2, N3]."""
+def _strip_preamble(text: str) -> str:
+    prev = None
+    while prev != text:
+        prev = text
+        m = _PREAMBLE.match(text)
+        if m and "[" not in m.group(0):  # keep a leading sentence that carries a citation
+            text = text[m.end():].strip()
+    return text
+
+
+def _cited_ids(text: str) -> list[str]:
     ids: list[str] = []
-    for group in _BRACKET.findall(answer):
+    for group in _BRACKET.findall(text):
         ids += _ID_TOKEN.findall(group)
     return ids
 
 
-def _select_passages(passages: list[dict], question: str, k: int = 3) -> list[dict]:
-    """Pick the k passages with the most word overlap with the question (no vector DB)."""
-    qwords = {w.strip(".,?'\"").lower() for w in question.split() if len(w) > 2}
-    scored = [
-        (len(qwords & {w.strip(".,?'\"").lower() for w in p["text"].split()}), i, p)
-        for i, p in enumerate(passages)
-    ]
-    scored.sort(key=lambda t: (t[0], -t[1]), reverse=True)
-    return [p for _, _, p in scored[:k]]
+def _grounded(num: str, support_text: str, support_nums: list[str]) -> bool:
+    """True if `num` appears in the facts, or is a rounded form of a number there (so
+    "$127.6B" validates against a "127.58" fact). Keeps invented numbers out while not
+    rejecting correct figures over formatting/rounding."""
+    if num in support_text:
+        return True
+    try:
+        val = float(num)
+    except ValueError:
+        return True
+    decimals = len(num.split(".", 1)[1]) if "." in num else 0
+    for s in support_nums:
+        try:
+            if round(float(s), decimals) == val:
+                return True
+        except ValueError:
+            continue
+    return False
+
+
+def build_evidence(memory: SharedMemory, question: str, max_passages: int = 8) -> list[dict]:
+    """The one ordered, labeled evidence list — used for the prompt AND the Sources panel.
+
+    Each item: {id, text, search_text, source, kind, ticker, data_mode}. Passages keep their
+    stored order so [Pk] is stable across the prompt and the UI.
+    """
+    ev: list[dict] = []
+
+    def add(fid, text, source, kind, ticker, data_mode, search_text=None):
+        ev.append({"id": fid, "text": text, "search_text": search_text or text,
+                   "source": source or {}, "kind": kind, "ticker": ticker, "data_mode": data_mode})
+
+    if memory.has("amd_notes"):
+        for n in memory.get("amd_notes"):
+            add(n["id"], n["text"], n.get("source"), "note", n.get("ticker"),
+                n.get("data_mode", "xbrl"), f"{n['text']} {n.get('values', '')}")
+    if memory.has("amd_sentiment"):
+        s = memory.get("amd_sentiment")
+        if isinstance(s, dict) and s.get("summary"):
+            src = (s.get("labels") or [{}])[0].get("source", {})
+            add("S1", s["summary"], src, "sentiment", s.get("ticker"), s.get("data_mode", "filing"))
+    if memory.has("amd_passages"):
+        for i, p in enumerate(memory.get("amd_passages")[:max_passages], 1):
+            add(f"P{i}", p["text"], p.get("source"), "passage", p.get("ticker"),
+                p.get("data_mode", "filing"))
+    if memory.has("amd_quote"):
+        q = memory.get("amd_quote")
+        if isinstance(q, dict) and "price" in q:
+            txt = f"Current price: {q['price']} {q.get('currency', 'USD')} as of {q.get('as_of', '')}"
+            add("Q1", txt, {"source": "Finnhub"}, "quote", q.get("ticker"), "live")
+    if memory.has("amd_news"):
+        for i, a in enumerate(memory.get("amd_news"), 1):
+            add(f"H{i}", f"{a['source']}, {a['date']}: {a['headline']}", {"source": a.get("source")},
+                "news", a.get("ticker"), "live")
+    return ev
+
+
+# Which evidence kinds each route's answer may draw on. Keeps a question answered from the
+# data its own route gathered, not stale variables left in memory by earlier questions in
+# the session (e.g. a prior price/news query polluting a "business" answer).
+_ROUTE_KINDS: dict[str, set[str]] = {
+    "numbers": {"note"},
+    "real_time": {"quote", "news"},
+    "sentiment": {"sentiment", "passage"},
+    "text": {"passage"},
+}
 
 
 class ReportAgent(Agent):
     name = "report_agent"
     reads: list[str] = []
-    writes = ["answer"]
+    writes = ["answer", "evidence"]
 
     def run(self, ticker: str, question: str, memory: SharedMemory, llm) -> str:
-        facts, facts_text, valid_ids, facts_blob = self._gather(memory, question)
-        if not facts:
-            memory.put("answer", "I don't have the data to answer that yet. (sample data)", self.name)
-            return f"{self.name}: no facts in memory -> wrote fallback answer"
+        route = memory.get("route") or ""
+        kinds = _ROUTE_KINDS.get(route)
+        all_ev = build_evidence(memory, question)
+        # Scope to the current route's evidence so the answer (and the Sources panel) use
+        # only what this question gathered — never leftovers from an earlier question in the
+        # session (a prior price/news query must not pollute a "business" answer).
+        evidence = [e for e in all_ev if e["kind"] in kinds] if kinds else all_ev
+        memory.put("evidence", evidence, self.name,
+                   description=f"{len(evidence)} labeled sources (route={route or 'all'})")
+        if not evidence:
+            memory.put(
+                "answer",
+                f"I don't have SEC filing or financial data for {ticker} yet — it looks "
+                f"newly listed and hasn't filed a 10-K or 10-Q. Once it files, filing and "
+                f"financial questions will work. You can still ask for its live price or "
+                f"recent news.",
+                self.name,
+            )
+            return f"{self.name}: no facts for route '{route or 'all'}' -> wrote no-data answer"
 
-        convo = memory.get("conversation_state") or ""
+        require_counts = any(e["kind"] == "sentiment" for e in evidence)
+        by_id = {e["id"]: e for e in evidence}
+        facts_text = "\n".join(f"[{e['id']}] {e['text']}" for e in evidence)
+        convo = "" if require_counts else (memory.get("conversation_state") or "")
         user = question if not convo else f"{question}\n\nRecent conversation:\n{convo}"
         messages = [{"role": "user", "content": f"{user}\n\nFacts:\n{facts_text}"}]
 
-        tag = self._source_tag(memory)
-        answer, how = self._answer_with_checks(llm, messages, valid_ids, facts_blob, facts, tag)
-        memory.put("answer", answer, self.name, description=f"final answer ({how})")
-        return f"{self.name}: wrote answer ({how}; {len(valid_ids)} facts available)"
+        answer, how, attempts, flags = self._answer_with_checks(
+            llm, messages, by_id, evidence, ticker, require_counts)
+        memory.put("answer", answer, self.name,
+                   description=f"final answer ({how}; attempts={attempts})")
+        flag_txt = f"; flags={flags}" if flags else ""
+        return f"{self.name}: wrote answer ({how}; {len(evidence)} facts{flag_txt})"
 
-    def _gather(self, memory: SharedMemory, question: str):
-        facts: list[tuple[str, str]] = []
-        lines: list[str] = []
-        blob: list[str] = []
-
-        if memory.has("amd_notes"):
-            for n in memory.get("amd_notes"):
-                facts.append((n["id"], n["text"]))
-                lines.append(f"[{n['id']}] {n['text']}")
-                blob.append(f"{n['text']} {n.get('values', '')}")
-        if memory.has("amd_sentiment"):
-            s = memory.get("amd_sentiment")
-            if isinstance(s, dict) and s.get("summary"):
-                facts.append(("S1", s["summary"]))
-                lines.append(f"[S1] {s['summary']}")
-                blob.append(s["summary"])
-        if memory.has("amd_passages"):
-            for i, p in enumerate(_select_passages(memory.get("amd_passages"), question), 1):
-                facts.append((f"P{i}", p["text"]))
-                lines.append(f"[P{i}] {p['text']}")
-                blob.append(p["text"])
-        if memory.has("amd_quote"):
-            q = memory.get("amd_quote")
-            if isinstance(q, dict) and "price" in q:
-                txt = f"Current price: {q['price']} {q.get('currency', 'USD')} as of {q.get('as_of', '')}"
-                facts.append(("Q1", txt))
-                lines.append(f"[Q1] {txt}")
-                blob.append(txt)
-        if memory.has("amd_news"):
-            for i, a in enumerate(memory.get("amd_news"), 1):
-                txt = f"{a['source']}, {a['date']}: {a['headline']}"
-                facts.append((f"H{i}", txt))
-                lines.append(f"[H{i}] {txt}")
-                blob.append(txt)
-
-        valid_ids = {fid for fid, _ in facts}
-        return facts, "\n".join(lines), valid_ids, " ".join(str(b) for b in blob)
-
-    @staticmethod
-    def _source_tag(memory: SharedMemory) -> str:
-        """Label the data provenance: live Finnhub quote/news vs sample fixtures."""
-        q = memory.get("amd_quote") if memory.has("amd_quote") else None
-        if (isinstance(q, dict) and q.get("live")) or memory.has("amd_news"):
-            return "(live: Finnhub)"
-        return "(sample data)"
-
-    def _answer_with_checks(self, llm, messages, valid_ids, facts_blob, facts, tag="(sample data)"):
-        engine = "fake" if "Fake" in type(llm).__name__ else "mistral"  # honest label in offline mode
+    def _answer_with_checks(self, llm, messages, by_id, evidence, ticker, require_counts):
+        engine = "fake" if "Fake" in type(llm).__name__ else "mistral"
+        last_reason = ""
         for attempt in (1, 2):
-            raw = llm.complete(SYSTEM, messages, max_tokens=300, temperature=0.0).strip()
-            ok, reason = self._check(raw, valid_ids, facts_blob)
+            raw = _strip_preamble(llm.complete(SYSTEM, messages, max_tokens=300, temperature=0.0).strip())
+            ok, reason = self._check(raw, by_id, ticker, require_counts)
             if ok:
-                return raw, f"{engine}, attempt {attempt}"
+                return raw, f"{engine}, attempt {attempt}", attempt, []
+            last_reason = reason
             messages = messages + [
                 {"role": "assistant", "content": raw},
                 {"role": "user", "content": (
-                    f"That failed a check ({reason}). Use ONLY the given facts, cite real "
-                    "IDs like [N1], and copy numbers exactly. Try again."
-                )},
+                    f"That failed a check ({reason}). Use ONLY the given facts, cite real IDs "
+                    "like [N1], copy numbers exactly, and answer every part. Try again.")},
             ]
-        return self._template(facts, tag), "template fallback"
+        tag = self._tag(evidence)
+        return self._template(evidence, require_counts, tag), "template fallback", 2, [last_reason]
 
     @staticmethod
-    def _check(answer: str, valid_ids: set[str], facts_blob: str):
-        for cid in _cited_ids(answer):
-            if cid not in valid_ids:
+    def _check(answer: str, by_id: dict, ticker: str, require_counts: bool):
+        cited = _cited_ids(answer)
+        for cid in cited:
+            if cid not in by_id:
                 return False, f"cited {cid} which does not exist"
-        answer_no_cites = _BRACKET.sub(" ", answer)  # don't read ID digits as numbers
-        blob_nums = set(_NUM.findall(facts_blob))
-        for num in _NUM.findall(answer_no_cites):
-            if num not in blob_nums and num not in facts_blob:
-                return False, f"number {num} not in the facts"
+        # entity safety (Task 3): a cited note/passage must belong to the question's ticker
+        for cid in cited:
+            tk = by_id[cid].get("ticker")
+            if tk and ticker and tk.upper() != ticker.upper():
+                return False, f"{cid} belongs to {tk}, not {ticker}"
+        # number grounding (Task 2): every number stated must appear in the provided facts
+        # (with rounding tolerance). Checked against ALL facts, not only the ids cited in
+        # the same sentence — a correct figure the model stated without a bracket is grounded
+        # data, not a hallucination (citation *existence* is enforced above), while an
+        # invented number still fails.
+        support = " ".join(e["search_text"] for e in by_id.values())
+        support_nums = _NUM.findall(support)
+        for sent in _SENT.split(answer):
+            for num in _NUM.findall(_INCIDENTAL.sub(" ", _BRACKET.sub(" ", sent))):
+                if not _grounded(num, support, support_nums):
+                    return False, f"number {num} is not in the provided facts"
+        # coverage (Task 4): tone questions must state the counts via [S1]
+        if require_counts and "S1" not in cited:
+            return False, "state the sentiment counts and cite [S1]"
         return True, "ok"
 
     @staticmethod
-    def _template(facts: list[tuple[str, str]], tag: str = "(sample data)") -> str:
-        body = " ".join(f"{txt} [{fid}]" for fid, txt in facts[:3])
-        return f"{body} {tag}"
+    def _tag(evidence: list[dict]) -> str:
+        if any(e.get("data_mode") == "sample" for e in evidence):
+            return "(sample data)"
+        return ""
+
+    @staticmethod
+    def _template(evidence: list[dict], require_counts: bool, tag: str = "") -> str:
+        picks = [e for e in evidence if e["kind"] in ("note", "sentiment")][:3] or evidence[:3]
+        body = " ".join(f"{e['text']} [{e['id']}]" for e in picks)
+        return f"{body} {tag}".strip()

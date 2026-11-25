@@ -326,6 +326,19 @@ Each branch must:
 - Update CLAUDE.md with new modules
 - Merge to `main` only after review
 
+## MCP server (`mcp_server/`)
+
+Setup, tools, modes, Cursor config and known limits: `mcp_server/README.md`.
+
+- `tools.py` holds the logic (plain Python, no MCP import). `server.py` only registers tools. Don't put logic in `server.py` or copy it from agent_core/backend.
+- Never write to stdout in the stdio server. It corrupts the protocol. Log to stderr only.
+- Keys come only from `.env`. Never log key values (presence as booleans is fine), and never put keys in an MCP client config (e.g. `~/.cursor/mcp.json`).
+- `mcp[cli]` is pinned `<2` (2.x removed FastMCP). The server uses `requirements-mcp.txt` and `.venv-mcp`, not `requirements.txt`.
+- Tools are `async def` that call blocking code through `anyio.to_thread.run_sync`, and they return `dict[str, Any]`.
+- Every tool description says "Facts only, no investment advice." Keep citations and the live/sample flag in outputs, and label news as untrusted data.
+- `runtime.bootstrap()` must run before any `backend.app` import (settings are relative to the working directory).
+- Tests (offline, also run by `.github/workflows/mcp-server.yml`): `.venv-mcp/bin/python -m pytest mcp_server/tests agent_core/tests -m "not network" -q`
+
 ## Repo Structure
 
 ```

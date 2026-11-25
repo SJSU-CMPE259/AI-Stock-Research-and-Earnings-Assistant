@@ -14,6 +14,7 @@ COMPANY_INFO: dict[str, dict] = {
     "META": {"name": "Meta Platforms, Inc."},
     "INTC": {"name": "Intel Corp."},
     "JPM": {"name": "JPMorgan Chase & Co."},
+    "ANT": {"name": "Anthropic"},  # IPO 2026-11-19 (Nasdaq); live quote only until its first 10-Q
 }
 
 SAMPLE_TICKER = "AMD"  # the only company with bundled numbers/sentiment sample data

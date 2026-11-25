@@ -42,25 +42,23 @@ def _inline(answer: str) -> str:
 
 
 def _sources(memory, cited_ids: list[str]) -> list[tuple[str, str]]:
-    """Map cited ids to their note/passage/quote/news/filing text from shared memory."""
+    """Map cited ids to their source text using the SAME labeled evidence list the report
+    agent built for the prompt, so [Pk] in the answer and in Sources is the same passage."""
     out = {}
-    if memory.has("amd_notes"):
-        for n in memory.get("amd_notes"):
-            out[n["id"]] = n["text"]
-    if memory.has("amd_passages"):
-        for i, p in enumerate(memory.get("amd_passages"), 1):
-            out.setdefault(f"P{i}", p["text"])
-    if memory.has("amd_quote"):
-        q = memory.get("amd_quote")
-        if isinstance(q, dict) and "price" in q:
-            out["Q1"] = f"Current price {q['price']} {q.get('currency', 'USD')} as of {q.get('as_of', '')}"
-    if memory.has("amd_news"):
-        for i, a in enumerate(memory.get("amd_news"), 1):
-            out[f"H{i}"] = f"{a.get('source', '')}, {a.get('date', '')}: {a.get('headline', '')}"
-    if memory.has("amd_sentiment"):
-        s = memory.get("amd_sentiment")
-        if isinstance(s, dict) and s.get("summary"):
-            out["S1"] = s["summary"]
+    evidence = memory.get("evidence") if memory.has("evidence") else None
+    if evidence:  # single source of truth: id -> text, identical numbering to the prompt
+        out = {e["id"]: e["text"] for e in evidence}
+    else:  # fallback for traces produced before the evidence list existed
+        if memory.has("amd_notes"):
+            for n in memory.get("amd_notes"):
+                out[n["id"]] = n["text"]
+        if memory.has("amd_passages"):
+            for i, p in enumerate(memory.get("amd_passages"), 1):
+                out.setdefault(f"P{i}", p["text"])
+        if memory.has("amd_sentiment"):
+            s = memory.get("amd_sentiment")
+            if isinstance(s, dict) and s.get("summary"):
+                out["S1"] = s["summary"]
     return [(cid, out[cid]) for cid in cited_ids if cid in out]
 
 

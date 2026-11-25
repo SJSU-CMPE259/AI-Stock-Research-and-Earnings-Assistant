@@ -1,0 +1,11 @@
+# Per-company XBRL concept overrides for the revenue/metric extractor.
+# The defaults live in src/finsight/tools/xbrl.py (METRICS); list concepts here in
+# priority order to override them for one company. Used by the data layer's ingest.
+overrides:
+  # JPMorgan is a bank: its headline "Total net revenue" is tagged
+  # RevenuesNetOfInterestExpense (net interest income + noninterest income). The default
+  # "Revenues" tag is stale/annual for JPM, so without this it has no quarterly revenue.
+  JPM:
+    revenue:
+      - RevenuesNetOfInterestExpense
+      - Revenues

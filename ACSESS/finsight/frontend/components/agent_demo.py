@@ -18,20 +18,20 @@ from frontend.components.pipeline import render_pipeline, render_route_card
 from frontend.components.quote_card import render_quote_card
 from frontend.theme import COLORS
 
-# Curated AMD demo set, grouped by the route each question takes (and the agents it
-# runs). A single question uses only its route's agents by design; across the set every
-# agent runs. All AMD so every question has real sample/live data.
-# {co} = the selected sidebar company. Real-time (price/news) and the guardrail work for
-# ANY company via Finnhub. Numbers/Sentiment/Business run on bundled AMD sample data only,
-# so they stay AMD and are labelled as such. ({co} is substituted at render time.)
+# Demo questions grouped by the route each takes (and the agents it runs). A single
+# question uses only its route's agents by design; across the set every agent runs.
+# {co} = the selected sidebar company, substituted at render time. In live mode every
+# group works for ANY company: price/news via Finnhub, revenue via SEC XBRL, sentiment
+# and business via the real 10-K. Only offline FakeLLM mode is limited to the bundled
+# AMD sample data.
 SAMPLE_GROUPS = [
     ("Live price & news · {co}", "any company", [
         "What is {co} trading at right now?",
         "What's the latest news on {co} today?",
     ]),
-    ("Revenue & growth · AMD sample", "Data → Analysis → Viz → Report", [
-        "What was AMD's revenue last quarter?",
-        "How did AMD's revenue change year over year?",
+    ("Revenue & growth · {co}", "Data → Analysis → Viz → Report", [
+        "What was {co}'s revenue last quarter?",
+        "How did {co}'s revenue change year over year?",
     ]),
     ("Filing sentiment · {co}", "Data → Classify → Viz → Report  ·  real 10-K", [
         "What is the tone of {co}'s recent filings?",
@@ -45,20 +45,19 @@ SAMPLE_GROUPS = [
 ]
 
 
-def _fresh(use_fake: bool, use_laya: bool) -> Orchestrator:
+def _fresh(use_fake: bool) -> Orchestrator:
     llm = FakeLLM() if use_fake else MistralLLM()
-    router = None
-    if use_laya:
-        from agent_core.laya_router import LayaRouter
-        router = LayaRouter()
-    return Orchestrator(llm, memory=SharedMemory(), conversation=Conversation(), router=router)
+    # Laya is always the router; LayaRouter.route() falls back to keyword rules on its
+    # own if the :8001 endpoint is unreachable.
+    from agent_core.laya_router import LayaRouter
+    return Orchestrator(llm, memory=SharedMemory(), conversation=Conversation(), router=LayaRouter())
 
 
 def _run(orch: Orchestrator, question: str, ticker: str) -> None:
     # Memory items aren't keyed by company, so a new company gets a fresh memory;
     # otherwise its answer reuses the previous company's data (the GOOGL → AMD bug).
     if st.session_state.get("agent_ticker") not in (None, ticker):
-        orch = st.session_state.agent_orch = _fresh(st.session_state.agent_fake, st.session_state.agent_laya)
+        orch = st.session_state.agent_orch = _fresh(st.session_state.agent_fake)
     st.session_state.agent_ticker = ticker
     orch.conversation.current_ticker = ticker
     with st.spinner("Agents working…"):
@@ -98,20 +97,17 @@ def render_agent_demo(company: str) -> None:
                 f'Ask about {company_name(company)} in plain English. Every number is computed in '
                 'Python and every claim is cited to its source.</div>', unsafe_allow_html=True)
 
-    # engine switches are for developers, so they live in the sidebar
+    # engine switch is for developers, so it lives in the sidebar. Laya is always the
+    # router (it falls back to keyword rules on its own if the :8001 endpoint is down).
     with st.sidebar.expander("Developer settings"):
         use_fake = st.toggle("Offline (FakeLLM)", value=False, key="use_fake",
-                             help="Off = real Mistral on the PSC GPU (needs the :8000 tunnel).")
-        use_laya = st.toggle("Route with Laya", value=False, key="use_laya",
-                             help="Use Laya to route (needs the :8001 tunnel); else keyword rules.")
+                             help="Off = real Mistral on the GPU (needs the :8000 tunnel).")
 
-    # rebuild the orchestrator when the engine toggles change (preserves memory otherwise)
+    # rebuild the orchestrator when the engine toggle changes (preserves memory otherwise)
     if ("agent_orch" not in st.session_state
-            or st.session_state.get("agent_fake") != use_fake
-            or st.session_state.get("agent_laya") != use_laya):
-        st.session_state.agent_orch = _fresh(use_fake, use_laya)
+            or st.session_state.get("agent_fake") != use_fake):
+        st.session_state.agent_orch = _fresh(use_fake)
         st.session_state.agent_fake = use_fake
-        st.session_state.agent_laya = use_laya
     orch = st.session_state.agent_orch
 
 
@@ -131,7 +127,7 @@ def render_agent_demo(company: str) -> None:
     st.pills("Try one:", samples, key="agent_chips", on_change=_pick)
     clicked = st.session_state.pop("agent_chip_q", None)
     if ncol.button("↻ New chat", use_container_width=True, key="new_chat"):
-        st.session_state.agent_orch = _fresh(use_fake, use_laya)
+        st.session_state.agent_orch = _fresh(use_fake)
         st.session_state.agent_result = None
         st.rerun()
 
@@ -178,7 +174,7 @@ def render_agent_demo(company: str) -> None:
     # explainability: how the answer was made, one click away instead of in the way
     with st.expander("🔍 How FinSight answered this: route, agents and memory"):
         _context_chips(orch)
-        render_route_card(tr, use_laya=st.session_state.get("use_laya", False))
+        render_route_card(tr, use_laya=True)
         render_pipeline(tr)
         if tr.reused:
             st.caption(f"♻ Reused from memory (skipped re-fetch): {', '.join(tr.reused)}")
